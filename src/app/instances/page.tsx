@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -88,6 +89,7 @@ type SortField = 'pricePerHour' | 'pricePerGpu' | 'gpuCount' | 'vcpu' | 'ramGB'
 type SortDirection = 'asc' | 'desc'
 
 export default function InstancesPage() {
+  const router = useRouter()
   const [apiData, setApiData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -154,6 +156,21 @@ export default function InstancesPage() {
     )
   }
 
+  const handleCompareInstances = () => {
+    if (selectedInstances.length < 2) {
+      // 버튼이 disabled되어 있어서 이 경우는 발생하지 않음
+      return
+    }
+    
+    if (selectedInstances.length > 4) {
+      // 버튼이 disabled되어 있어서 이 경우는 발생하지 않음
+      return
+    }
+
+    const queryString = selectedInstances.join(',')
+    router.push(`/instances/compare?ids=${queryString}`)
+  }
+
   const getProviderColor = (provider: string) => {
     switch (provider) {
       case 'AWS': return 'bg-orange-100 text-orange-800'
@@ -165,6 +182,36 @@ export default function InstancesPage() {
 
   const formatPrice = (price: number) => {
     return `$${price.toFixed(3)}`
+  }
+
+  const getInstanceDocumentationUrl = (provider: string, instanceName: string, region: string) => {
+    switch (provider.toLowerCase()) {
+      case 'aws':
+        return `https://aws.amazon.com/ec2/instance-types/${instanceName.split('.')[0]}/`
+      case 'azure':
+        if (instanceName.includes('ND')) {
+          return 'https://docs.microsoft.com/en-us/azure/virtual-machines/nd-series'
+        }
+        return 'https://docs.microsoft.com/en-us/azure/virtual-machines/sizes-gpu'
+      case 'gcp':
+        if (instanceName.startsWith('a3')) {
+          return 'https://cloud.google.com/compute/docs/accelerator-optimized-machines#a3_vms'
+        } else if (instanceName.startsWith('a2')) {
+          return 'https://cloud.google.com/compute/docs/accelerator-optimized-machines#a2_vms'
+        } else if (instanceName.startsWith('g2')) {
+          return 'https://cloud.google.com/compute/docs/accelerator-optimized-machines#g2_vms'
+        }
+        return 'https://cloud.google.com/compute/docs/accelerator-optimized-machines'
+      default:
+        return '#'
+    }
+  }
+
+  const handleExternalLink = (provider: string, instanceName: string, region: string) => {
+    const url = getInstanceDocumentationUrl(provider, instanceName, region)
+    if (url !== '#') {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
   }
 
   return (
@@ -308,11 +355,31 @@ export default function InstancesPage() {
               </div>
               {selectedInstances.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">
-                    {selectedInstances.length}개 선택됨
-                  </span>
-                  <Button variant="outline" size="sm">
-                    선택한 인스턴스 비교
+                  <div className="flex flex-col items-end">
+                    <span className="text-sm text-muted-foreground">
+                      {selectedInstances.length}개 선택됨
+                    </span>
+                    {selectedInstances.length < 2 && (
+                      <span className="text-xs text-orange-600">
+                        비교하려면 최소 2개 선택
+                      </span>
+                    )}
+                    {selectedInstances.length > 4 && (
+                      <span className="text-xs text-red-600">
+                        최대 4개까지 선택 가능
+                      </span>
+                    )}
+                  </div>
+                  <Button 
+                    variant={selectedInstances.length >= 2 && selectedInstances.length <= 4 ? "default" : "outline"}
+                    size="sm"
+                    onClick={handleCompareInstances}
+                    disabled={selectedInstances.length < 2 || selectedInstances.length > 4}
+                  >
+                    {selectedInstances.length >= 2 && selectedInstances.length <= 4 
+                      ? `${selectedInstances.length}개 인스턴스 비교` 
+                      : '선택한 인스턴스 비교'
+                    }
                   </Button>
                 </div>
               )}
@@ -407,7 +474,12 @@ export default function InstancesPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleExternalLink(instance.provider, instance.instanceName, instance.region)}
+                          title={`${instance.provider} 공식 문서 보기`}
+                        >
                           <ExternalLink className="h-4 w-4" />
                         </Button>
                       </TableCell>
