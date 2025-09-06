@@ -42,23 +42,43 @@ interface InstanceData {
   lastUpdated: string
 }
 
-// 가격 데이터 (실제로는 DB에서 가져와야 함)
-const mockPrices: Record<string, { pricePerHour: number; currency: string; region: string }> = {
-  // AWS
-  'aws-p5d.24xlarge': { pricePerHour: 98.32, currency: 'USD', region: 'ap-northeast-2' },
-  'aws-p4d.24xlarge': { pricePerHour: 32.77, currency: 'USD', region: 'ap-northeast-2' },
-  'aws-g5.xlarge': { pricePerHour: 1.006, currency: 'USD', region: 'ap-northeast-2' },
-  'aws-g5.2xlarge': { pricePerHour: 1.89, currency: 'USD', region: 'ap-northeast-2' },
-  
-  // Azure
-  'azure-Standard_ND_H100_v5': { pricePerHour: 89.76, currency: 'USD', region: 'koreacentral' },
-  'azure-Standard_ND96amsr_A100_v4': { pricePerHour: 27.20, currency: 'USD', region: 'koreacentral' },
-  'azure-Standard_ND40rs_v2': { pricePerHour: 19.44, currency: 'USD', region: 'koreacentral' },
-  
-  // GCP
-  'gcp-a3-highgpu-8g': { pricePerHour: 91.45, currency: 'USD', region: 'asia-northeast1' },
-  'gcp-a2-highgpu-8g': { pricePerHour: 29.89, currency: 'USD', region: 'asia-northeast1' },
-  'gcp-g2-standard-4': { pricePerHour: 0.736, currency: 'USD', region: 'asia-northeast1' }
+// 동적 가격 데이터 가져오기
+async function getCurrentPrices(): Promise<Record<string, { pricePerHour: number; currency: string; lastUpdated: string }>> {
+  try {
+    // 관리자 API에서 현재 가격 가져오기
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/prices`)
+    const data = await response.json()
+    return data.prices || {}
+  } catch (error) {
+    console.error('Failed to fetch current prices:', error)
+    // 폴백 데이터
+    return {
+      'aws-p5d.24xlarge': { pricePerHour: 98.32, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'aws-p4d.24xlarge': { pricePerHour: 32.77, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'aws-g5.xlarge': { pricePerHour: 1.006, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'aws-g5.2xlarge': { pricePerHour: 1.89, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'azure-Standard_ND_H100_v5': { pricePerHour: 89.76, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'azure-Standard_ND96amsr_A100_v4': { pricePerHour: 27.20, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'azure-Standard_ND40rs_v2': { pricePerHour: 19.44, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'gcp-a3-highgpu-8g': { pricePerHour: 91.45, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'gcp-a2-highgpu-8g': { pricePerHour: 29.89, currency: 'USD', lastUpdated: new Date().toISOString() },
+      'gcp-g2-standard-4': { pricePerHour: 0.736, currency: 'USD', lastUpdated: new Date().toISOString() }
+    }
+  }
+}
+
+// 리전 매핑
+const regionMapping: Record<string, string> = {
+  'aws-p5d.24xlarge': 'ap-northeast-2',
+  'aws-p4d.24xlarge': 'ap-northeast-2',
+  'aws-g5.xlarge': 'ap-northeast-2',
+  'aws-g5.2xlarge': 'ap-northeast-2',
+  'azure-Standard_ND_H100_v5': 'koreacentral',
+  'azure-Standard_ND96amsr_A100_v4': 'koreacentral',
+  'azure-Standard_ND40rs_v2': 'koreacentral',
+  'gcp-a3-highgpu-8g': 'asia-northeast1',
+  'gcp-a2-highgpu-8g': 'asia-northeast1',
+  'gcp-g2-standard-4': 'asia-northeast1'
 }
 
 async function loadInstanceSpecs(): Promise<Record<string, Record<string, InstanceSpecs>>> {
@@ -94,8 +114,11 @@ export async function GET(request: NextRequest) {
     // 파라미터 검증
     const validatedParams = instancesQuerySchema.parse(queryParams)
 
-    // 인스턴스 스펙 데이터 로드
-    const specsData = await loadInstanceSpecs()
+    // 인스턴스 스펙 및 가격 데이터 로드
+    const [specsData, currentPrices] = await Promise.all([
+      loadInstanceSpecs(),
+      getCurrentPrices()
+    ])
     
     // 모든 인스턴스 데이터 생성
     const allInstances: InstanceData[] = []
@@ -103,19 +126,20 @@ export async function GET(request: NextRequest) {
     for (const [provider, instances] of Object.entries(specsData)) {
       for (const [instanceName, specs] of Object.entries(instances)) {
         const instanceId = generateInstanceId(provider, instanceName)
-        const priceData = mockPrices[instanceId]
+        const priceData = currentPrices[instanceId]
+        const region = regionMapping[instanceId]
         
-        if (priceData) {
+        if (priceData && region) {
           allInstances.push({
             id: instanceId,
             provider: provider.toUpperCase(),
-            region: priceData.region,
+            region,
             instanceName,
             specs,
             pricePerHour: priceData.pricePerHour,
             pricePerGpu: priceData.pricePerHour / specs.gpuCount,
             currency: priceData.currency,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: priceData.lastUpdated
           })
         }
       }
