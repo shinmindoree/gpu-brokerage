@@ -1,0 +1,139 @@
+{
+  "aws": {
+    "p5d.24xlarge": {
+      "family": "p5d",
+      "gpuModel": "H100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 80,
+      "vcpu": 96,
+      "ramGB": 1152,
+      "localSsdGB": 7600,
+      "interconnect": "NVSwitch",
+      "networkPerformance": "100 Gigabit",
+      "nvlinkSupport": true,
+      "migSupport": true
+    },
+    "p4d.24xlarge": {
+      "family": "p4d",
+      "gpuModel": "A100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 40,
+      "vcpu": 96,
+      "ramGB": 1152,
+      "localSsdGB": 8000,
+      "interconnect": "NVSwitch",
+      "networkPerformance": "400 Gigabit",
+      "nvlinkSupport": true,
+      "migSupport": true
+    },
+    "g5.xlarge": {
+      "family": "g5",
+      "gpuModel": "A10G",
+      "gpuCount": 1,
+      "gpuMemoryGB": 24,
+      "vcpu": 4,
+      "ramGB": 16,
+      "localSsdGB": 250,
+      "interconnect": "PCIe",
+      "networkPerformance": "10 Gigabit",
+      "nvlinkSupport": false,
+      "migSupport": false
+    },
+    "g5.2xlarge": {
+      "family": "g5",
+      "gpuModel": "A10G",
+      "gpuCount": 1,
+      "gpuMemoryGB": 24,
+      "vcpu": 8,
+      "ramGB": 32,
+      "localSsdGB": 450,
+      "interconnect": "PCIe",
+      "networkPerformance": "10 Gigabit",
+      "nvlinkSupport": false,
+      "migSupport": false
+    }
+  },
+  "azure": {
+    "Standard_ND96amsr_A100_v4": {
+      "family": "NDv4",
+      "gpuModel": "A100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 40,
+      "vcpu": 96,
+      "ramGB": 900,
+      "localSsdGB": 6400,
+      "interconnect": "InfiniBand",
+      "networkPerformance": "200 Gbps",
+      "nvlinkSupport": true,
+      "migSupport": true
+    },
+    "Standard_ND40rs_v2": {
+      "family": "NDv2",
+      "gpuModel": "V100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 32,
+      "vcpu": 40,
+      "ramGB": 672,
+      "localSsdGB": 2948,
+      "interconnect": "InfiniBand",
+      "networkPerformance": "200 Gbps",
+      "nvlinkSupport": true,
+      "migSupport": false
+    },
+    "Standard_ND_H100_v5": {
+      "family": "ND_H100_v5",
+      "gpuModel": "H100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 80,
+      "vcpu": 176,
+      "ramGB": 1760,
+      "localSsdGB": 4000,
+      "interconnect": "InfiniBand",
+      "networkPerformance": "400 Gbps",
+      "nvlinkSupport": true,
+      "migSupport": true
+    }
+  },
+  "gcp": {
+    "a3-highgpu-8g": {
+      "family": "a3",
+      "gpuModel": "H100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 80,
+      "vcpu": 208,
+      "ramGB": 1872,
+      "localSsdGB": 0,
+      "interconnect": "NVSwitch",
+      "networkPerformance": "200 Gbps",
+      "nvlinkSupport": true,
+      "migSupport": true
+    },
+    "a2-highgpu-8g": {
+      "family": "a2",
+      "gpuModel": "A100",
+      "gpuCount": 8,
+      "gpuMemoryGB": 40,
+      "vcpu": 96,
+      "ramGB": 680,
+      "localSsdGB": 0,
+      "interconnect": "NVSwitch",
+      "networkPerformance": "100 Gbps",
+      "nvlinkSupport": true,
+      "migSupport": true
+    },
+    "g2-standard-4": {
+      "family": "g2",
+      "gpuModel": "L4",
+      "gpuCount": 1,
+      "gpuMemoryGB": 24,
+      "vcpu": 4,
+      "ramGB": 16,
+      "localSsdGB": 0,
+      "interconnect": "PCIe",
+      "networkPerformance": "10 Gbps",
+      "nvlinkSupport": false,
+      "migSupport": false
+    }
+  }
+}
+

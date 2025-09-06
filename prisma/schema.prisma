@@ -1,0 +1,199 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// 프로바이더 테이블
+model Provider {
+  id          String   @id @default(cuid())
+  code        String   @unique // aws, azure, gcp, oci, alibaba
+  name        String
+  logoUrl     String?  @map("logo_url")
+  apiEndpoint String?  @map("api_endpoint")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  regions          Region[]
+  instanceFamilies InstanceFamily[]
+  instanceTypes    InstanceType[]
+
+  @@map("providers")
+}
+
+// 리전 테이블
+model Region {
+  id          String   @id @default(cuid())
+  providerId  String   @map("provider_id")
+  code        String   // us-east-1, koreacentral, asia-northeast1
+  name        String   // US East (N. Virginia)
+  countryCode String?  @map("country_code") // US, KR, JP
+  continent   String?  // north-america, asia, europe
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  provider      Provider       @relation(fields: [providerId], references: [id])
+  instanceTypes InstanceType[]
+
+  @@unique([providerId, code])
+  @@map("regions")
+}
+
+// GPU 모델 테이블
+model GpuModel {
+  id                String   @id @default(cuid())
+  vendor            String   // NVIDIA, AMD, Intel
+  model             String   // H100, A100, L4, MI300X
+  architecture      String?  // Hopper, Ampere, Ada Lovelace
+  vramGb            Int      @map("vram_gb")
+  memoryType        String?  @map("memory_type") // HBM3, HBM2e, GDDR6
+  memoryBandwidthGbps Int?    @map("memory_bandwidth_gbps")
+  fp16Tflops        Float? @map("fp16_tflops")
+  bf16Tflops        Float? @map("bf16_tflops")
+  int8Tops          Float? @map("int8_tops")
+  nvlinkSupport     Boolean  @default(false) @map("nvlink_support")
+  migSupport        Boolean  @default(false) @map("mig_support")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  // Relations
+  instanceFamilies InstanceFamily[]
+
+  @@unique([vendor, model])
+  @@map("gpu_models")
+}
+
+// 인스턴스 패밀리 정보 (정적 레퍼런스)
+model InstanceFamily {
+  id               String   @id @default(cuid())
+  providerId       String   @map("provider_id")
+  familyCode       String   @map("family_code") // p5, nd_h100_v5, a3-highgpu
+  familyName       String?  @map("family_name")
+  gpuModelId       String   @map("gpu_model_id")
+  description      String?
+  interconnectType String?  @map("interconnect_type") // NVLink, NVSwitch, InfiniBand
+  useCase          String?  @map("use_case") // training, inference, hpc
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // Relations
+  provider      Provider       @relation(fields: [providerId], references: [id])
+  gpuModel      GpuModel       @relation(fields: [gpuModelId], references: [id])
+  instanceTypes InstanceType[]
+
+  @@unique([providerId, familyCode])
+  @@map("instance_families")
+}
+
+// 인스턴스 타입 테이블
+model InstanceType {
+  id                 String   @id @default(cuid())
+  providerId         String   @map("provider_id")
+  regionId           String   @map("region_id")
+  familyId           String   @map("family_id")
+  instanceName       String   @map("instance_name") // p5d.24xlarge, Standard_ND96amsr_A100_v4
+  gpuCount           Int      @map("gpu_count")
+  vcpuCount          Int      @map("vcpu_count")
+  ramGb              Int      @map("ram_gb")
+  localSsdGb         Int      @default(0) @map("local_ssd_gb")
+  networkPerformance String?  @map("network_performance") // 25 Gigabit, 100 Gigabit
+  isAvailable        Boolean  @default(true) @map("is_available")
+  launchDate         DateTime? @map("launch_date")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  provider     Provider      @relation(fields: [providerId], references: [id])
+  region       Region        @relation(fields: [regionId], references: [id])
+  family       InstanceFamily @relation(fields: [familyId], references: [id])
+  priceHistory PriceHistory[]
+
+  @@unique([providerId, regionId, instanceName])
+  @@map("instance_types")
+}
+
+// 가격 히스토리 테이블
+model PriceHistory {
+  id               String   @id @default(cuid())
+  instanceTypeId   String   @map("instance_type_id")
+  purchaseOption   String   @default("on_demand") @map("purchase_option") // on_demand, reserved_1yr, reserved_3yr
+  unit             String   @default("hour") // hour, month
+  currency         String   @default("USD")
+  priceAmount      Float  @map("price_amount")
+  effectiveDate    DateTime @map("effective_date")
+  sourceSku        String?  @map("source_sku")
+  rawResponse      Json?    @map("raw_response") // 원본 API 응답 저장
+  dataSource       String?  @map("data_source") // api, manual, estimated
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // Relations
+  instanceType InstanceType @relation(fields: [instanceTypeId], references: [id])
+
+  @@unique([instanceTypeId, purchaseOption, currency, effectiveDate])
+  @@map("price_history")
+}
+
+// 환율 테이블
+model ExchangeRate {
+  id             String   @id @default(cuid())
+  baseCurrency   String   @default("USD") @map("base_currency")
+  targetCurrency String   @map("target_currency")
+  rate           Float
+  rateDate       DateTime @map("rate_date")
+  source         String?  // ecb, koreanbank, fixer
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([baseCurrency, targetCurrency, rateDate])
+  @@map("exchange_rates")
+}
+
+// 데이터 수집 로그 테이블
+model EtlLog {
+  id                 String    @id @default(cuid())
+  providerCode       String?   @map("provider_code")
+  jobType            String?   @map("job_type") // price_sync, spec_sync, fx_sync
+  status             String    // running, success, failed
+  recordsProcessed   Int       @default(0) @map("records_processed")
+  errorMessage       String?   @map("error_message")
+  startedAt          DateTime  @default(now()) @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  executionTimeMs    Int?      @map("execution_time_ms")
+
+  @@map("etl_logs")
+}
+
+// 사용자 선호 설정 (향후 확장)
+model UserPreference {
+  id               String   @id @default(cuid())
+  sessionId        String?  @map("session_id")
+  preferredCurrency String  @default("USD") @map("preferred_currency")
+  preferredRegions String? @map("preferred_regions") // JSON 문자열로 즐겨찾기 리전 저장
+  includeVat       Boolean  @default(false) @map("include_vat")
+  vatRate          Float  @default(0.10) @map("vat_rate")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("user_preferences")
+}
+
+// 스펙 변경 추적
+model SpecChangeLog {
+  id            String   @id @default(cuid())
+  instanceType  String   @map("instance_type")
+  providerCode  String   @map("provider_code")
+  changeType    String   @map("change_type") // added, modified, deprecated
+  oldSpecs      Json?    @map("old_specs")
+  newSpecs      Json?    @map("new_specs")
+  changeReason  String?  @map("change_reason")
+  detectedAt    DateTime @default(now()) @map("detected_at")
+  verifiedBy    String?  @map("verified_by") // manual, auto, api
+  confidenceScore Float? @map("confidence_score")
+
+  @@map("spec_change_log")
+}
