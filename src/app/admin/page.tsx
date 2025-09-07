@@ -16,7 +16,9 @@ import {
   DollarSign,
   Database,
   Clock,
-  TrendingUp
+  TrendingUp,
+  Download,
+  Zap
 } from "lucide-react"
 
 interface PriceUpdateData {
@@ -45,6 +47,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({})
 
@@ -177,6 +180,43 @@ export default function AdminPage() {
     }
   }
 
+  const syncAWSPrices = async () => {
+    try {
+      setSyncing(true)
+      setMessage(null)
+
+      const response = await fetch('/api/admin/sync-aws-prices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to sync AWS prices')
+      }
+
+      // 동기화 성공 시 데이터 다시 로드
+      await loadPriceData()
+
+      setMessage({ 
+        type: 'success', 
+        text: `AWS 가격 동기화 완료: ${result.data?.updated || 0}개 인스턴스 업데이트됨`
+      })
+
+    } catch (error) {
+      console.error('AWS price sync error:', error)
+      setMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'AWS 가격 동기화 중 오류가 발생했습니다.' 
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const formatPrice = (price: number) => {
     return `$${price.toFixed(3)}`
   }
@@ -227,9 +267,10 @@ export default function AdminPage() {
         )}
 
         <Tabs defaultValue="prices" className="space-y-4">
-          <TabsList>
+            <TabsList>
             <TabsTrigger value="prices">가격 관리</TabsTrigger>
             <TabsTrigger value="stats">통계</TabsTrigger>
+            <TabsTrigger value="automation">자동화</TabsTrigger>
           </TabsList>
 
           <TabsContent value="stats" className="space-y-4">
@@ -289,6 +330,143 @@ export default function AdminPage() {
             )}
           </TabsContent>
 
+          <TabsContent value="automation" className="space-y-4">
+            {/* 자동화 설정 */}
+            <div className="space-y-6">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-semibold">가격 동기화 자동화</h2>
+                <p className="text-sm text-muted-foreground">
+                  외부 API와의 가격 동기화를 관리합니다.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* AWS 동기화 */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="w-6 h-6 bg-orange-100 rounded flex items-center justify-center">
+                        <span className="text-orange-600 text-xs font-bold">AWS</span>
+                      </div>
+                      AWS Price List API
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-sm text-muted-foreground">
+                      Seoul 리전의 GPU 인스턴스 가격을 AWS 공식 API에서 자동으로 가져옵니다.
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>지원 인스턴스 패밀리:</span>
+                        <span className="font-mono">P3, P4, P5, G4, G5, G6</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>업데이트 주기:</span>
+                        <span>수동 (권장: 일 1회)</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>마지막 동기화:</span>
+                        <span>{new Date().toLocaleDateString('ko-KR')}</span>
+                      </div>
+                    </div>
+
+                    <Button 
+                      onClick={syncAWSPrices} 
+                      disabled={syncing}
+                      className="w-full"
+                    >
+                      {syncing ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4 mr-2" />
+                      )}
+                      {syncing ? '동기화 중...' : '지금 동기화'}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* 향후 확장: Azure, GCP */}
+                <Card className="opacity-60">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
+                        <span className="text-blue-600 text-xs font-bold">AZ</span>
+                      </div>
+                      Azure Retail Prices API
+                      <Badge variant="outline" className="text-xs">곧 출시</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-sm text-muted-foreground">
+                      Azure GPU 인스턴스 가격을 공식 API에서 가져옵니다.
+                    </div>
+                    <Button disabled className="w-full">
+                      <Zap className="h-4 w-4 mr-2" />
+                      개발 예정
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="opacity-60">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
+                        <span className="text-green-600 text-xs font-bold">GCP</span>
+                      </div>
+                      Google Cloud Billing API
+                      <Badge variant="outline" className="text-xs">곧 출시</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-sm text-muted-foreground">
+                      Google Cloud GPU 인스턴스 가격을 공식 API에서 가져옵니다.
+                    </div>
+                    <Button disabled className="w-full">
+                      <Zap className="h-4 w-4 mr-2" />
+                      개발 예정
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* 설정 */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>동기화 설정</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">자동 동기화 주기</label>
+                      <select className="w-full p-2 border rounded-md text-sm" disabled>
+                        <option>수동</option>
+                        <option>매일 오전 9시</option>
+                        <option>주 1회 (월요일)</option>
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">가격 변동 임계값</label>
+                      <Input 
+                        type="number" 
+                        placeholder="10%" 
+                        disabled
+                        className="text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        이 비율 이상 변동 시 알림
+                      </p>
+                    </div>
+
+                    <Button disabled className="w-full" variant="outline">
+                      <Save className="h-4 w-4 mr-2" />
+                      설정 저장 (개발 예정)
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
           <TabsContent value="prices" className="space-y-4">
             {/* 가격 관리 */}
             <div className="flex justify-between items-center">
@@ -302,6 +480,19 @@ export default function AdminPage() {
                 <Button variant="outline" onClick={loadPriceData} disabled={loading}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   새로고침
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={syncAWSPrices} 
+                  disabled={syncing || loading}
+                  className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+                >
+                  {syncing ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {syncing ? 'AWS 동기화 중...' : 'AWS 가격 동기화'}
                 </Button>
                 {hasChanges() && (
                   <>

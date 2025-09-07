@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Search, Filter, ArrowUpDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
+import { Search, Filter, ArrowUpDown, ExternalLink, Loader2 } from "lucide-react"
 
 interface InstanceSpecs {
   family: string
@@ -58,15 +58,6 @@ interface ApiResponse {
   }
 }
 
-interface ExchangeRateData {
-  success: boolean
-  from: string
-  to: string
-  rate: number
-  lastUpdated: string
-  source: string
-}
-
 async function fetchInstances(params: {
   provider?: string
   region?: string
@@ -94,19 +85,8 @@ async function fetchInstances(params: {
   return response.json()
 }
 
-async function fetchExchangeRate(): Promise<ExchangeRateData> {
-  const response = await fetch('/api/exchange-rates')
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch exchange rate')
-  }
-  
-  return response.json()
-}
-
 type SortField = 'pricePerHour' | 'pricePerGpu' | 'gpuCount' | 'vcpu' | 'ramGB'
 type SortDirection = 'asc' | 'desc'
-type Currency = 'USD' | 'KRW'
 
 export default function InstancesPage() {
   const router = useRouter()
@@ -121,11 +101,6 @@ export default function InstancesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [selectedInstances, setSelectedInstances] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
-  
-  // 환율 관련 상태
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>('USD')
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRateData | null>(null)
-  const [rateLoading, setRateLoading] = useState(false)
 
   // API 데이터에서 필터 옵션 추출
   const providers = apiData?.filters.providers || []
@@ -133,32 +108,6 @@ export default function InstancesPage() {
   const gpuModels = apiData?.filters.gpuModels || []
   const instances = apiData?.instances || []
   const pagination = apiData?.pagination
-
-  // 환율 로드
-  useEffect(() => {
-    const loadExchangeRate = async () => {
-      try {
-        setRateLoading(true)
-        const rateData = await fetchExchangeRate()
-        setExchangeRate(rateData)
-      } catch (error) {
-        console.error('Failed to load exchange rate:', error)
-        // 환율 로드 실패 시 기본값 사용
-        setExchangeRate({
-          success: true,
-          from: 'USD',
-          to: 'KRW',
-          rate: 1300,
-          lastUpdated: new Date().toISOString(),
-          source: 'fallback'
-        })
-      } finally {
-        setRateLoading(false)
-      }
-    }
-
-    loadExchangeRate()
-  }, [])
 
   // API 데이터 로드
   useEffect(() => {
@@ -225,20 +174,14 @@ export default function InstancesPage() {
   const getProviderColor = (provider: string) => {
     switch (provider) {
       case 'AWS': return 'bg-orange-100 text-orange-800'
-      case 'AZURE': return 'bg-blue-100 text-blue-800'
+      case 'Azure': return 'bg-blue-100 text-blue-800'
       case 'GCP': return 'bg-green-100 text-green-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const formatPrice = (price: number, currency: Currency = selectedCurrency) => {
-    if (currency === 'USD') {
-      return `$${price.toFixed(3)}`
-    } else {
-      // USD를 KRW로 변환
-      const krwPrice = exchangeRate ? price * exchangeRate.rate : price * 1300
-      return `₩${Math.round(krwPrice).toLocaleString()}`
-    }
+  const formatPrice = (price: number) => {
+    return `$${price.toFixed(3)}`
   }
 
   const getInstanceDocumentationUrl = (provider: string, instanceName: string, region: string) => {
@@ -271,18 +214,6 @@ export default function InstancesPage() {
     }
   }
 
-  const refreshExchangeRate = async () => {
-    try {
-      setRateLoading(true)
-      const rateData = await fetchExchangeRate()
-      setExchangeRate(rateData)
-    } catch (error) {
-      console.error('Failed to refresh exchange rate:', error)
-    } finally {
-      setRateLoading(false)
-    }
-  }
-
   return (
     <div className="container mx-auto p-6">
       <div className="space-y-6">
@@ -303,7 +234,7 @@ export default function InstancesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">검색</label>
                 <div className="relative">
@@ -363,19 +294,6 @@ export default function InstancesPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">통화</label>
-                <Select value={selectedCurrency} onValueChange={(value: Currency) => setSelectedCurrency(value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="통화 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD ($)</SelectItem>
-                    <SelectItem value="KRW">KRW (₩)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
                 <label className="text-sm font-medium">정렬</label>
                 <Select value={`${sortField}-${sortDirection}`} onValueChange={(value) => {
                   const [field, direction] = value.split('-') as [SortField, SortDirection]
@@ -397,38 +315,6 @@ export default function InstancesPage() {
                 </Select>
               </div>
             </div>
-
-            {/* 환율 정보 */}
-            {selectedCurrency === 'KRW' && exchangeRate && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-blue-800">
-                      환율: 1 USD = ₩{Math.round(exchangeRate.rate).toLocaleString()} KRW
-                    </span>
-                    <Badge variant="outline" className="text-xs">
-                      {exchangeRate.source === 'api' ? '실시간' : '기본값'}
-                    </Badge>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={refreshExchangeRate}
-                    disabled={rateLoading}
-                    className="text-blue-600 hover:text-blue-700"
-                  >
-                    {rateLoading ? (
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-                <div className="text-xs text-blue-600 mt-1">
-                  마지막 업데이트: {new Date(exchangeRate.lastUpdated).toLocaleString('ko-KR')}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -660,9 +546,6 @@ export default function InstancesPage() {
               <p>※ 실제 사용 전 각 프로바이더의 공식 가격을 확인해주세요.</p>
               {apiData?.meta && (
                 <p>※ 마지막 업데이트: {new Date(apiData.meta.lastUpdated).toLocaleString('ko-KR')}</p>
-              )}
-              {selectedCurrency === 'KRW' && exchangeRate && (
-                <p>※ 환율 정보: {exchangeRate.source === 'api' ? '실시간 API' : '기본값'} 기준</p>
               )}
             </div>
           </>
