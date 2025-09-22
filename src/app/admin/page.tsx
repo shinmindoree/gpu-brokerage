@@ -48,6 +48,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [azureSyncing, setAzureSyncing] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({})
 
@@ -214,6 +215,47 @@ export default function AdminPage() {
       })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const syncAzurePrices = async () => {
+    try {
+      setAzureSyncing(true)
+      setMessage(null)
+
+      const response = await fetch('/api/admin/sync-azure-prices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          regions: [], // 모든 리전
+          dryRun: false
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to sync Azure prices')
+      }
+
+      // 동기화 성공 시 데이터 다시 로드
+      await loadPriceData()
+
+      setMessage({ 
+        type: 'success', 
+        text: `Azure 가격 동기화 완료: ${result.data?.updated || 0}개 인스턴스 업데이트됨`
+      })
+
+    } catch (error) {
+      console.error('Azure price sync error:', error)
+      setMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'Azure 가격 동기화 중 오류가 발생했습니다.' 
+      })
+    } finally {
+      setAzureSyncing(false)
     }
   }
 
@@ -387,23 +429,36 @@ export default function AdminPage() {
                 </Card>
 
                 {/* 향후 확장: Azure, GCP */}
-                <Card className="opacity-60">
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
                         <span className="text-blue-600 text-xs font-bold">AZ</span>
                       </div>
                       Azure Retail Prices API
-                      <Badge variant="outline" className="text-xs">곧 출시</Badge>
+                      <Badge variant="secondary" className="text-xs">활성</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="text-sm text-muted-foreground">
                       Azure GPU 인스턴스 가격을 공식 API에서 가져옵니다.
                     </div>
-                    <Button disabled className="w-full">
-                      <Zap className="h-4 w-4 mr-2" />
-                      개발 예정
+                    <Button 
+                      onClick={syncAzurePrices}
+                      disabled={azureSyncing || loading}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      {azureSyncing ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          동기화 중...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4 mr-2" />
+                          Azure 가격 동기화
+                        </>
+                      )}
                     </Button>
                   </CardContent>
                 </Card>
@@ -493,6 +548,19 @@ export default function AdminPage() {
                     <Download className="h-4 w-4 mr-2" />
                   )}
                   {syncing ? 'AWS 동기화 중...' : 'AWS 가격 동기화'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={syncAzurePrices} 
+                  disabled={azureSyncing || loading}
+                  className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                >
+                  {azureSyncing ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {azureSyncing ? 'Azure 동기화 중...' : 'Azure 가격 동기화'}
                 </Button>
                 {hasChanges() && (
                   <>

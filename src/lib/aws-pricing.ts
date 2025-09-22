@@ -306,3 +306,4 @@ export class AWSPricingService {
 
 // 싱글톤 인스턴스
 export const awsPricingService = new AWSPricingService()
+

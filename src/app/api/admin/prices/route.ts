@@ -168,3 +168,4 @@ export function updatePrice(instanceId: string, pricePerHour: number, currency =
   }
   return false
 }
+

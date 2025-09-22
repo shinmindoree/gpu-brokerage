@@ -42,13 +42,37 @@ interface InstanceData {
   lastUpdated: string
 }
 
-// 동적 가격 데이터 가져오기
+// 동적 가격 데이터 가져오기 (AWS + Azure)
 async function getCurrentPrices(): Promise<Record<string, { pricePerHour: number; currency: string; lastUpdated: string }>> {
   try {
-    // 관리자 API에서 현재 가격 가져오기
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/prices`)
-    const data = await response.json()
-    return data.prices || {}
+    // 기존 AWS 가격 가져오기
+    const awsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/prices`)
+    const awsData = await awsResponse.json()
+    
+    // Azure 가격 가져오기
+    const azureResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-azure-prices`)
+    const azureData = await azureResponse.json()
+    
+    const combinedPrices: Record<string, { pricePerHour: number; currency: string; lastUpdated: string }> = {}
+    
+    // AWS 가격 추가
+    if (awsData.prices) {
+      Object.assign(combinedPrices, awsData.prices)
+    }
+    
+    // Azure 가격 추가
+    if (azureData.success && azureData.data?.instances) {
+      for (const instance of azureData.data.instances) {
+        const instanceId = `azure-${instance.vmSize.toLowerCase()}-${instance.location.toLowerCase().replace(/\s+/g, '-')}`
+        combinedPrices[instanceId] = {
+          pricePerHour: instance.pricePerHour,
+          currency: instance.currency || 'USD',
+          lastUpdated: instance.effectiveDate || new Date().toISOString()
+        }
+      }
+    }
+    
+    return combinedPrices
   } catch (error) {
     console.error('Failed to fetch current prices:', error)
     // 폴백 데이터
@@ -123,6 +147,7 @@ export async function GET(request: NextRequest) {
     // 모든 인스턴스 데이터 생성
     const allInstances: InstanceData[] = []
     
+    // 기존 specs 파일에서 인스턴스 생성 (AWS, GCP)
     for (const [provider, instances] of Object.entries(specsData)) {
       for (const [instanceName, specs] of Object.entries(instances)) {
         const instanceId = generateInstanceId(provider, instanceName)
@@ -143,6 +168,50 @@ export async function GET(request: NextRequest) {
           })
         }
       }
+    }
+
+    // Azure 인스턴스 추가 (동적 데이터)
+    try {
+      const azureResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-azure-prices`)
+      const azureData = await azureResponse.json()
+      
+      if (azureData.success && azureData.data?.instances) {
+        for (const azureInstance of azureData.data.instances) {
+          const instanceId = `azure-${azureInstance.vmSize.toLowerCase()}-${azureInstance.location.toLowerCase().replace(/\s+/g, '-')}`
+          
+          // Azure 인스턴스를 표준 포맷으로 변환
+          const specs: InstanceSpecs = {
+            family: azureInstance.vmSize.split('_')[1] || 'Unknown',
+            gpuModel: azureInstance.gpuModel || 'Unknown',
+            gpuCount: azureInstance.gpuCount || 1,
+            gpuMemoryGB: azureInstance.gpuModel === 'A100' ? 80 : 
+                        azureInstance.gpuModel === 'Tesla V100' ? 32 :
+                        azureInstance.gpuModel === 'Tesla T4' ? 16 : 16,
+            vcpu: azureInstance.vcpu || 4,
+            ramGB: azureInstance.ram || 28,
+            localSsdGB: 0, // Azure는 별도 디스크
+            interconnect: azureInstance.gpuModel === 'A100' ? 'NVLink' : 
+                         azureInstance.gpuModel === 'Tesla V100' ? 'NVLink' : 'PCIe',
+            networkPerformance: 'High',
+            nvlinkSupport: azureInstance.gpuModel === 'A100' || azureInstance.gpuModel === 'Tesla V100',
+            migSupport: azureInstance.gpuModel === 'A100'
+          }
+
+          allInstances.push({
+            id: instanceId,
+            provider: 'AZURE',
+            region: azureInstance.location,
+            instanceName: azureInstance.vmSize,
+            specs,
+            pricePerHour: azureInstance.pricePerHour,
+            pricePerGpu: azureInstance.pricePerHour / specs.gpuCount,
+            currency: azureInstance.currency || 'USD',
+            lastUpdated: azureInstance.effectiveDate || new Date().toISOString()
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load Azure instances:', error)
     }
 
     // 필터링
