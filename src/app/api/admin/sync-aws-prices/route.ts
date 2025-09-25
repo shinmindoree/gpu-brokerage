@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { awsPricingService } from '@/lib/aws-pricing'
+import { AWSPricingService } from '@/lib/aws-pricing'
+import { z } from 'zod'
+
+const awsSyncSchema = z.object({
+  regions: z.array(z.string()).optional(),
+  dryRun: z.boolean().optional().default(false),
+})
 
 interface SyncResult {
   success: boolean
@@ -15,61 +21,74 @@ interface SyncResult {
 
 export async function POST(request: NextRequest): Promise<NextResponse<SyncResult>> {
   try {
+    const body = await request.json()
+    const { regions, dryRun } = awsSyncSchema.parse(body)
+
     console.log('Starting AWS price synchronization...')
     
-    // AWS에서 Seoul 리전 GPU 인스턴스 가격 가져오기
-    const awsPrices = await awsPricingService.fetchSeoulGPUPrices()
-    
-    if (awsPrices.length === 0) {
+    const awsPricingService = new AWSPricingService()
+    const result = await awsPricingService.fetchGPUPrices(regions)
+
+    if (!result.success) {
       return NextResponse.json({
         success: false,
-        message: 'No AWS prices fetched. Using existing prices.',
+        message: result.message || result.error || 'No AWS prices fetched',
         data: {
           totalFetched: 0,
           updated: 0,
-          errors: 0,
+          errors: 1,
           updatedInstances: []
         }
       })
     }
 
-    // 내부 포맷으로 변환
-    const internalPrices = awsPricingService.mapToInternalFormat(awsPrices)
-    
-    // 가격 업데이트 API 호출
-    const updates = Object.entries(internalPrices).map(([instanceId, priceData]) => ({
-      instanceId,
-      newPrice: priceData.pricePerHour,
-      currency: priceData.currency
-    }))
+    if (!dryRun && result.data) {
+      // 가격 업데이트 API 호출
+      const updates = result.data.instances.map(instance => ({
+        instanceId: `aws-${instance.instanceType}`,
+        newPrice: instance.pricePerHour,
+        currency: instance.currency
+      }))
 
-    // 내부 가격 업데이트 API 호출
-    const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/prices`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ updates })
-    })
+      // 내부 가격 업데이트 API 호출
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/prices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ updates })
+      })
 
-    const updateResult = await updateResponse.json()
+      const updateResult = await updateResponse.json()
 
-    if (!updateResponse.ok || !updateResult.success) {
-      throw new Error(updateResult.message || 'Failed to update prices')
+      if (!updateResponse.ok || !updateResult.success) {
+        throw new Error(updateResult.message || 'Failed to update prices')
+      }
+
+      const successfulUpdates = updateResult.results?.filter((r: any) => r.success) || []
+      
+      console.log(`AWS price sync completed. Updated ${successfulUpdates.length} instances.`)
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully synchronized ${successfulUpdates.length} AWS GPU instance prices`,
+        data: {
+          totalFetched: result.data.totalCount,
+          updated: successfulUpdates.length,
+          errors: updates.length - successfulUpdates.length,
+          updatedInstances: successfulUpdates.map((r: any) => r.instanceId)
+        }
+      })
     }
-
-    const successfulUpdates = updateResult.results?.filter((r: any) => r.success) || []
-    
-    console.log(`AWS price sync completed. Updated ${successfulUpdates.length} instances.`)
 
     return NextResponse.json({
       success: true,
-      message: `Successfully synchronized ${successfulUpdates.length} AWS GPU instance prices from Seoul region`,
+      message: `AWS 가격 동기화 완료: ${result.data?.totalCount || 0}개 인스턴스 (Dry Run)`,
       data: {
-        totalFetched: awsPrices.length,
-        updated: successfulUpdates.length,
-        errors: updates.length - successfulUpdates.length,
-        updatedInstances: successfulUpdates.map((r: any) => r.instanceId)
+        totalFetched: result.data?.totalCount || 0,
+        updated: dryRun ? 0 : result.data?.totalCount || 0,
+        errors: 0,
+        updatedInstances: dryRun ? [] : result.data?.instances.map(i => `aws-${i.instanceType}`) || []
       }
     })
 
@@ -91,20 +110,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const dryRun = searchParams.get('dryRun') === 'true'
 
     if (dryRun) {
-      // 실제 동기화 없이 가져올 수 있는 데이터만 확인
-      const awsPrices = await awsPricingService.fetchSeoulGPUPrices()
-      const internalPrices = awsPricingService.mapToInternalFormat(awsPrices)
+      // 새로운 AWS GPU 가격 API 사용
+      const awsPricingService = new AWSPricingService()
+      const result = await awsPricingService.fetchGPUPrices()
+
+      if (!result.success) {
+        return NextResponse.json({ success: false, message: result.message || result.error }, { status: 500 })
+      }
 
       return NextResponse.json({
         success: true,
-        message: 'Dry run completed',
+        message: 'AWS 가격 데이터 조회 성공',
         data: {
-          availablePrices: Object.keys(internalPrices).length,
-          instances: Object.keys(internalPrices),
-          samplePrices: Object.entries(internalPrices).slice(0, 3).reduce((acc, [key, value]) => {
-            acc[key] = value
-            return acc
-          }, {} as Record<string, any>)
+          instances: result.data?.instances || [],
+          availablePrices: result.data?.totalCount || 0,
+          regions: result.data?.regions || [],
+          gpuModels: result.data?.gpuModels || [],
+          dryRun: true
         }
       })
     }

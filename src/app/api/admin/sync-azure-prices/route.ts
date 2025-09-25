@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
         message: 'Azure 가격 정보 미리보기',
         data: {
           availablePrices: azureResponse.data?.totalCount || 0,
-          instances: azureResponse.data?.instances.slice(0, 5) || [],
+          instances: azureResponse.data?.instances || [],
           regions: azureResponse.data?.regions || [],
           gpuModels: azureResponse.data?.gpuModels || [],
           dryRun: true

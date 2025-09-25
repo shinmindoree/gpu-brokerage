@@ -49,6 +49,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [azureSyncing, setAzureSyncing] = useState(false)
+  const [gcpSyncing, setGcpSyncing] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingPrices, setEditingPrices] = useState<Record<string, number>>({})
 
@@ -259,6 +260,47 @@ export default function AdminPage() {
     }
   }
 
+  const syncGCPPrices = async () => {
+    try {
+      setGcpSyncing(true)
+      setMessage(null)
+
+      const response = await fetch('/api/admin/sync-gcp-prices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          regions: [], // 모든 리전
+          dryRun: false
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to sync GCP prices')
+      }
+
+      // 동기화 성공 시 데이터 다시 로드
+      await loadPriceData()
+
+      setMessage({ 
+        type: 'success', 
+        text: `GCP 가격 동기화 완료: ${result.data?.updated || 0}개 인스턴스 업데이트됨`
+      })
+
+    } catch (error) {
+      console.error('GCP price sync error:', error)
+      setMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'GCP 가격 동기화 중 오류가 발생했습니다.' 
+      })
+    } finally {
+      setGcpSyncing(false)
+    }
+  }
+
   const formatPrice = (price: number) => {
     return `$${price.toFixed(3)}`
   }
@@ -463,6 +505,40 @@ export default function AdminPage() {
                   </CardContent>
                 </Card>
 
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
+                        <span className="text-green-600 text-xs font-bold">GCP</span>
+                      </div>
+                      Google Cloud Pricing API
+                      <Badge variant="secondary" className="text-xs">활성</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-sm text-muted-foreground">
+                      GCP GPU 인스턴스 가격을 공식 API에서 가져옵니다.
+                    </div>
+                    <Button 
+                      onClick={syncGCPPrices}
+                      disabled={gcpSyncing || loading}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      {gcpSyncing ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          동기화 중...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4 mr-2" />
+                          GCP 가격 동기화
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+
                 <Card className="opacity-60">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -561,6 +637,19 @@ export default function AdminPage() {
                     <Download className="h-4 w-4 mr-2" />
                   )}
                   {azureSyncing ? 'Azure 동기화 중...' : 'Azure 가격 동기화'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={syncGCPPrices} 
+                  disabled={gcpSyncing || loading}
+                  className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                >
+                  {gcpSyncing ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {gcpSyncing ? 'GCP 동기화 중...' : 'GCP 가격 동기화'}
                 </Button>
                 {hasChanges() && (
                   <>

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SimpleSelect, SimpleSelectItem } from "@/components/ui/simple-select"
 import { Input } from "@/components/ui/input"
 import { Search, Filter, ArrowUpDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
 
@@ -319,82 +320,77 @@ export default function InstancesPage() {
               
               <div className="space-y-2">
                 <label className="text-sm font-medium">프로바이더</label>
-                <Select value={selectedProvider} onValueChange={(value) => { setSelectedProvider(value); setCurrentPage(1); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="프로바이더 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체</SelectItem>
-                    {providers.map(provider => (
-                      <SelectItem key={provider} value={provider}>{provider}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SimpleSelect 
+                  value={selectedProvider} 
+                  onValueChange={(value) => { setSelectedProvider(value); setCurrentPage(1); }}
+                  placeholder="프로바이더 선택"
+                >
+                  <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                  {providers.map(provider => (
+                    <SimpleSelectItem key={provider} value={provider}>{provider}</SimpleSelectItem>
+                  ))}
+                </SimpleSelect>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">리전</label>
-                <Select value={selectedRegion} onValueChange={(value) => { setSelectedRegion(value); setCurrentPage(1); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="리전 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체</SelectItem>
-                    {regions.map(region => (
-                      <SelectItem key={region} value={region}>{region}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SimpleSelect 
+                  value={selectedRegion} 
+                  onValueChange={(value) => { setSelectedRegion(value); setCurrentPage(1); }}
+                  placeholder="리전 선택"
+                >
+                  <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                  {regions.map(region => (
+                    <SimpleSelectItem key={region} value={region}>{region}</SimpleSelectItem>
+                  ))}
+                </SimpleSelect>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">GPU 모델</label>
-                <Select value={selectedGpuModel} onValueChange={(value) => { setSelectedGpuModel(value); setCurrentPage(1); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="GPU 모델 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체</SelectItem>
-                    {gpuModels.map(model => (
-                      <SelectItem key={model} value={model}>{model}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SimpleSelect 
+                  value={selectedGpuModel} 
+                  onValueChange={(value) => { setSelectedGpuModel(value); setCurrentPage(1); }}
+                  placeholder="GPU 모델 선택"
+                >
+                  <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                  {gpuModels.map(model => (
+                    <SimpleSelectItem key={model} value={model}>{model}</SimpleSelectItem>
+                  ))}
+                </SimpleSelect>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">통화</label>
-                <Select value={selectedCurrency} onValueChange={(value: Currency) => setSelectedCurrency(value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="통화 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD ($)</SelectItem>
-                    <SelectItem value="KRW">KRW (₩)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SimpleSelect 
+                  value={selectedCurrency} 
+                  onValueChange={(value) => setSelectedCurrency(value as Currency)}
+                  placeholder="통화 선택"
+                >
+                  <SimpleSelectItem value="USD">USD ($)</SimpleSelectItem>
+                  <SimpleSelectItem value="KRW">KRW (₩)</SimpleSelectItem>
+                </SimpleSelect>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">정렬</label>
-                <Select value={`${sortField}-${sortDirection}`} onValueChange={(value) => {
-                  const [field, direction] = value.split('-') as [SortField, SortDirection]
-                  setSortField(field)
-                  setSortDirection(direction)
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="정렬 기준" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pricePerGpu-asc">GPU당 가격 (낮음)</SelectItem>
-                    <SelectItem value="pricePerGpu-desc">GPU당 가격 (높음)</SelectItem>
-                    <SelectItem value="pricePerHour-asc">시간당 가격 (낮음)</SelectItem>
-                    <SelectItem value="pricePerHour-desc">시간당 가격 (높음)</SelectItem>
-                    <SelectItem value="gpuCount-desc">GPU 수 (많음)</SelectItem>
-                    <SelectItem value="vcpu-desc">vCPU (많음)</SelectItem>
-                    <SelectItem value="ramGB-desc">RAM (많음)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SimpleSelect 
+                  value={`${sortField}-${sortDirection}`} 
+                  onValueChange={(value) => {
+                    const [field, direction] = value.split('-') as [SortField, SortDirection]
+                    setSortField(field)
+                    setSortDirection(direction)
+                  }}
+                  placeholder="정렬 기준"
+                >
+                  <SimpleSelectItem value="pricePerGpu-asc">GPU당 가격 (낮음)</SimpleSelectItem>
+                  <SimpleSelectItem value="pricePerGpu-desc">GPU당 가격 (높음)</SimpleSelectItem>
+                  <SimpleSelectItem value="pricePerHour-asc">시간당 가격 (낮음)</SimpleSelectItem>
+                  <SimpleSelectItem value="pricePerHour-desc">시간당 가격 (높음)</SimpleSelectItem>
+                  <SimpleSelectItem value="gpuCount-desc">GPU 수 (많음)</SimpleSelectItem>
+                  <SimpleSelectItem value="vcpu-desc">vCPU (많음)</SimpleSelectItem>
+                  <SimpleSelectItem value="ramGB-desc">RAM (많음)</SimpleSelectItem>
+                </SimpleSelect>
               </div>
             </div>
 

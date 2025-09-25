@@ -3,6 +3,17 @@ import { z } from 'zod'
 import fs from 'fs/promises'
 import path from 'path'
 
+// 인메모리 캐시 구조
+interface CachedInstanceData {
+  data: InstanceData[]
+  lastUpdated: number
+  ttl: number // Time to live in milliseconds
+}
+
+// 캐시 저장소
+const instanceCache = new Map<string, CachedInstanceData>()
+const CACHE_TTL = 5 * 60 * 1000 // 5분 캐시
+
 // 요청 파라미터 스키마
 const instancesQuerySchema = z.object({
   provider: z.string().optional(),
@@ -11,7 +22,7 @@ const instancesQuerySchema = z.object({
   sortBy: z.enum(['pricePerHour', 'pricePerGpu', 'gpuCount', 'vcpu', 'ramGB']).optional().default('pricePerGpu'),
   sortDirection: z.enum(['asc', 'desc']).optional().default('asc'),
   page: z.coerce.number().min(1).optional().default(1),
-  limit: z.coerce.number().min(1).max(100).optional().default(20),
+  limit: z.coerce.number().min(1).max(1000).optional().default(50),
   search: z.string().optional()
 })
 
@@ -72,6 +83,26 @@ async function getCurrentPrices(): Promise<Record<string, { pricePerHour: number
       }
     }
     
+    // GCP 가격 가져오기
+    try {
+      const gcpResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-gcp-prices`)
+      const gcpData = await gcpResponse.json()
+      
+      // GCP 가격 추가
+      if (gcpData.success && gcpData.data?.instances) {
+        for (const instance of gcpData.data.instances) {
+          const instanceId = `gcp-${instance.machineType.toLowerCase()}-${instance.region.toLowerCase()}`
+          combinedPrices[instanceId] = {
+            pricePerHour: instance.pricePerHour,
+            currency: instance.currency || 'USD',
+            lastUpdated: instance.effectiveDate || new Date().toISOString()
+          }
+        }
+      }
+    } catch (gcpError) {
+      console.warn('Failed to fetch GCP prices:', gcpError)
+    }
+    
     return combinedPrices
   } catch (error) {
     console.error('Failed to fetch current prices:', error)
@@ -120,6 +151,182 @@ function generateInstanceId(provider: string, instanceName: string): string {
   return `${provider.toLowerCase()}-${instanceName}`
 }
 
+// Helper functions for Azure GPU info
+function getGPUMemorySize(gpuModel: string): number {
+  switch (gpuModel) {
+    case 'H100': return 80
+    case 'A100': return 80
+    case 'Tesla V100': return 32
+    case 'Tesla T4': return 16
+    case 'Tesla P100': return 16
+    case 'Tesla P40': return 24
+    case 'Tesla K80': return 24
+    case 'Tesla M60': return 8
+    case 'A10': return 24
+    case 'Radeon MI25': return 16
+    default: return 16
+  }
+}
+
+function getInterconnectType(gpuModel: string): string {
+  switch (gpuModel) {
+    case 'H100':
+    case 'A100':
+    case 'Tesla V100':
+      return 'NVLink'
+    default:
+      return 'PCIe'
+  }
+}
+
+function hasNVLinkSupport(gpuModel: string): boolean {
+  return ['H100', 'A100', 'Tesla V100'].includes(gpuModel)
+}
+
+// 캐시된 인스턴스 데이터 로드 함수
+async function getCachedInstances(): Promise<InstanceData[]> {
+  const cacheKey = 'all_instances'
+  const cached = instanceCache.get(cacheKey)
+  const now = Date.now()
+
+  // 캐시가 유효한 경우 반환
+  if (cached && (now - cached.lastUpdated) < cached.ttl) {
+    console.log('Using cached instance data')
+    return cached.data
+  }
+
+  console.log('Loading fresh instance data...')
+  
+  // 모든 인스턴스 데이터 생성
+  const allInstances: InstanceData[] = []
+  
+  // 세 개의 API를 병렬로 호출하여 성능 개선
+  const [awsData, azureData, gcpData] = await Promise.allSettled([
+    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-aws-prices?dryRun=true`).then(r => r.json()),
+    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-azure-prices?dryRun=true`).then(r => r.json()),
+    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-gcp-prices?dryRun=true`).then(r => r.json())
+  ])
+
+  // AWS 인스턴스 추가
+  if (awsData.status === 'fulfilled' && awsData.value.success && awsData.value.data?.instances) {
+    for (const awsInstance of awsData.value.data.instances) {
+      const instanceId = `aws-${awsInstance.instanceType.toLowerCase()}-${awsInstance.region.toLowerCase().replace(/\s+/g, '-')}`
+      
+      const specs: InstanceSpecs = {
+        family: awsInstance.instanceType.split('.')[0] || 'Unknown',
+        gpuModel: awsInstance.gpuModel || 'Unknown',
+        gpuCount: awsInstance.gpuCount || 1,
+        gpuMemoryGB: getGPUMemorySize(awsInstance.gpuModel),
+        vcpu: awsInstance.vcpu || 4,
+        ramGB: awsInstance.memory || 28,
+        localSsdGB: 0,
+        interconnect: getInterconnectType(awsInstance.gpuModel),
+        networkPerformance: 'High',
+        nvlinkSupport: hasNVLinkSupport(awsInstance.gpuModel),
+        migSupport: awsInstance.gpuModel === 'A100' || awsInstance.gpuModel === 'H100'
+      }
+
+      allInstances.push({
+        id: instanceId,
+        provider: 'AWS',
+        region: awsInstance.region || 'Unknown',
+        instanceName: awsInstance.instanceType || 'Unknown',
+        specs,
+        pricePerHour: awsInstance.pricePerHour || 0,
+        pricePerGpu: (awsInstance.pricePerHour || 0) / specs.gpuCount,
+        currency: awsInstance.currency || 'USD',
+        lastUpdated: awsInstance.lastUpdated || new Date().toISOString()
+      })
+    }
+  }
+
+  // Azure 인스턴스 추가
+  if (azureData.status === 'fulfilled' && azureData.value.success && azureData.value.data?.instances) {
+    for (const azureInstance of azureData.value.data.instances) {
+      const instanceId = `azure-${azureInstance.vmSize.toLowerCase()}-${azureInstance.location.toLowerCase().replace(/\s+/g, '-')}`
+      
+      const specs: InstanceSpecs = {
+        family: azureInstance.vmSize ? azureInstance.vmSize.split('_')[1] || 'Unknown' : 'Unknown',
+        gpuModel: azureInstance.gpuModel || 'Unknown',
+        gpuCount: azureInstance.gpuCount || 1,
+        gpuMemoryGB: getGPUMemorySize(azureInstance.gpuModel),
+        vcpu: azureInstance.vcpu || 4,
+        ramGB: azureInstance.ram || 28,
+        localSsdGB: 0,
+        interconnect: getInterconnectType(azureInstance.gpuModel),
+        networkPerformance: 'High',
+        nvlinkSupport: hasNVLinkSupport(azureInstance.gpuModel),
+        migSupport: azureInstance.gpuModel === 'A100' || azureInstance.gpuModel === 'H100'
+      }
+
+      allInstances.push({
+        id: instanceId,
+        provider: 'AZURE',
+        region: azureInstance.location || 'Unknown',
+        instanceName: azureInstance.vmSize || 'Unknown',
+        specs,
+        pricePerHour: azureInstance.pricePerHour || 0,
+        pricePerGpu: (azureInstance.pricePerHour || 0) / specs.gpuCount,
+        currency: azureInstance.currency || 'USD',
+        lastUpdated: azureInstance.effectiveDate || new Date().toISOString()
+      })
+    }
+  }
+
+  // GCP 인스턴스 추가 (중복 제거)
+  if (gcpData.status === 'fulfilled' && gcpData.value.success && gcpData.value.data?.instances) {
+    const gcpInstancesMap = new Map()
+    
+    for (const gcpInstance of gcpData.value.data.instances) {
+      const instanceId = `gcp-${gcpInstance.machineType.toLowerCase()}-${gcpInstance.region.toLowerCase()}`
+      
+      // 중복 제거: 같은 instanceId가 이미 있으면 건너뛰기
+      if (gcpInstancesMap.has(instanceId)) {
+        continue
+      }
+      
+      const specs: InstanceSpecs = {
+        family: gcpInstance.machineType.split('-')[0] || 'Unknown',
+        gpuModel: gcpInstance.gpuModel || 'Unknown',
+        gpuCount: gcpInstance.gpuCount || 1,
+        gpuMemoryGB: getGPUMemorySize(gcpInstance.gpuModel),
+        vcpu: gcpInstance.vcpu || 4,
+        ramGB: gcpInstance.memory || 28,
+        localSsdGB: 0,
+        interconnect: getInterconnectType(gcpInstance.gpuModel),
+        networkPerformance: 'High',
+        nvlinkSupport: hasNVLinkSupport(gcpInstance.gpuModel),
+        migSupport: gcpInstance.gpuModel === 'A100' || gcpInstance.gpuModel === 'H100'
+      }
+
+      const instanceData = {
+        id: instanceId,
+        provider: 'GCP',
+        region: gcpInstance.region || 'Unknown',
+        instanceName: gcpInstance.machineType || 'Unknown',
+        specs,
+        pricePerHour: gcpInstance.pricePerHour || 0,
+        pricePerGpu: (gcpInstance.pricePerHour || 0) / specs.gpuCount,
+        currency: gcpInstance.currency || 'USD',
+        lastUpdated: gcpInstance.effectiveDate || new Date().toISOString()
+      }
+
+      gcpInstancesMap.set(instanceId, instanceData)
+      allInstances.push(instanceData)
+    }
+  }
+
+  // 캐시에 저장
+  instanceCache.set(cacheKey, {
+    data: allInstances,
+    lastUpdated: now,
+    ttl: CACHE_TTL
+  })
+
+  console.log(`Loaded ${allInstances.length} instances into cache`)
+  return allInstances
+}
+
 export async function GET(request: NextRequest) {
   try {
     // URL 파라미터 파싱
@@ -138,81 +345,9 @@ export async function GET(request: NextRequest) {
     // 파라미터 검증
     const validatedParams = instancesQuerySchema.parse(queryParams)
 
-    // 인스턴스 스펙 및 가격 데이터 로드
-    const [specsData, currentPrices] = await Promise.all([
-      loadInstanceSpecs(),
-      getCurrentPrices()
-    ])
-    
-    // 모든 인스턴스 데이터 생성
-    const allInstances: InstanceData[] = []
-    
-    // 기존 specs 파일에서 인스턴스 생성 (AWS, GCP)
-    for (const [provider, instances] of Object.entries(specsData)) {
-      for (const [instanceName, specs] of Object.entries(instances)) {
-        const instanceId = generateInstanceId(provider, instanceName)
-        const priceData = currentPrices[instanceId]
-        const region = regionMapping[instanceId]
-        
-        if (priceData && region) {
-          allInstances.push({
-            id: instanceId,
-            provider: provider.toUpperCase(),
-            region,
-            instanceName,
-            specs,
-            pricePerHour: priceData.pricePerHour,
-            pricePerGpu: priceData.pricePerHour / specs.gpuCount,
-            currency: priceData.currency,
-            lastUpdated: priceData.lastUpdated
-          })
-        }
-      }
-    }
+    // 캐시된 인스턴스 데이터 로드
+    const allInstances = await getCachedInstances()
 
-    // Azure 인스턴스 추가 (동적 데이터)
-    try {
-      const azureResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-azure-prices`)
-      const azureData = await azureResponse.json()
-      
-      if (azureData.success && azureData.data?.instances) {
-        for (const azureInstance of azureData.data.instances) {
-          const instanceId = `azure-${azureInstance.vmSize.toLowerCase()}-${azureInstance.location.toLowerCase().replace(/\s+/g, '-')}`
-          
-          // Azure 인스턴스를 표준 포맷으로 변환
-          const specs: InstanceSpecs = {
-            family: azureInstance.vmSize.split('_')[1] || 'Unknown',
-            gpuModel: azureInstance.gpuModel || 'Unknown',
-            gpuCount: azureInstance.gpuCount || 1,
-            gpuMemoryGB: azureInstance.gpuModel === 'A100' ? 80 : 
-                        azureInstance.gpuModel === 'Tesla V100' ? 32 :
-                        azureInstance.gpuModel === 'Tesla T4' ? 16 : 16,
-            vcpu: azureInstance.vcpu || 4,
-            ramGB: azureInstance.ram || 28,
-            localSsdGB: 0, // Azure는 별도 디스크
-            interconnect: azureInstance.gpuModel === 'A100' ? 'NVLink' : 
-                         azureInstance.gpuModel === 'Tesla V100' ? 'NVLink' : 'PCIe',
-            networkPerformance: 'High',
-            nvlinkSupport: azureInstance.gpuModel === 'A100' || azureInstance.gpuModel === 'Tesla V100',
-            migSupport: azureInstance.gpuModel === 'A100'
-          }
-
-          allInstances.push({
-            id: instanceId,
-            provider: 'AZURE',
-            region: azureInstance.location,
-            instanceName: azureInstance.vmSize,
-            specs,
-            pricePerHour: azureInstance.pricePerHour,
-            pricePerGpu: azureInstance.pricePerHour / specs.gpuCount,
-            currency: azureInstance.currency || 'USD',
-            lastUpdated: azureInstance.effectiveDate || new Date().toISOString()
-          })
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load Azure instances:', error)
-    }
 
     // 필터링
     let filteredInstances = allInstances.filter(instance => {
@@ -325,5 +460,33 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// 캐시 무효화 API (POST 요청)
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    
+    if (body.action === 'invalidateCache') {
+      instanceCache.clear()
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Instance cache cleared successfully' 
+      })
+    }
+    
+    return NextResponse.json({ 
+      success: false, 
+      message: 'Invalid action' 
+    }, { status: 400 })
+    
+  } catch (error) {
+    console.error('Cache invalidation error:', error)
+    return NextResponse.json({ 
+      success: false, 
+      message: 'Failed to invalidate cache',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }

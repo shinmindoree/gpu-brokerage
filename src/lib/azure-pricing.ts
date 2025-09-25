@@ -31,47 +31,102 @@ interface AzurePricingResponse {
   message?: string
 }
 
-// Azure GPU VM 패밀리 매핑
-const AZURE_GPU_FAMILIES = {
-  'NC': { // NVIDIA Tesla K80, P40, P100
+// Azure GPU VM 패밀리 매핑 (2024년 최신 버전)
+const AZURE_GPU_FAMILIES: Record<string, Record<string, any>> = {
+  // NCv1 Series - NVIDIA Tesla K80
+  'NCv1': {
     'Standard_NC6': { gpuModel: 'Tesla K80', gpuCount: 1, vcpu: 6, ram: 56 },
     'Standard_NC12': { gpuModel: 'Tesla K80', gpuCount: 2, vcpu: 12, ram: 112 },
-    'Standard_NC24': { gpuModel: 'Tesla K80', gpuCount: 4, vcpu: 24, ram: 224 },
+    'Standard_NC24': { gpuModel: 'Tesla K80', gpuCount: 4, vcpu: 24, ram: 224 }
+  },
+  
+  // NCv2 Series - NVIDIA Tesla P100
+  'NCv2': {
     'Standard_NC6s_v2': { gpuModel: 'Tesla P100', gpuCount: 1, vcpu: 6, ram: 112 },
     'Standard_NC12s_v2': { gpuModel: 'Tesla P100', gpuCount: 2, vcpu: 12, ram: 224 },
     'Standard_NC24s_v2': { gpuModel: 'Tesla P100', gpuCount: 4, vcpu: 24, ram: 448 },
+    'Standard_NC24rs_v2': { gpuModel: 'Tesla P100', gpuCount: 4, vcpu: 24, ram: 448 }
+  },
+
+  // NCv3 Series - NVIDIA Tesla V100
+  'NCv3': {
     'Standard_NC6s_v3': { gpuModel: 'Tesla V100', gpuCount: 1, vcpu: 6, ram: 112 },
     'Standard_NC12s_v3': { gpuModel: 'Tesla V100', gpuCount: 2, vcpu: 12, ram: 224 },
-    'Standard_NC24s_v3': { gpuModel: 'Tesla V100', gpuCount: 4, vcpu: 24, ram: 448 }
+    'Standard_NC24s_v3': { gpuModel: 'Tesla V100', gpuCount: 4, vcpu: 24, ram: 448 },
+    'Standard_NC24rs_v3': { gpuModel: 'Tesla V100', gpuCount: 4, vcpu: 24, ram: 448 }
   },
-  'ND': { // NVIDIA Tesla P40
-    'Standard_ND6s': { gpuModel: 'Tesla P40', gpuCount: 1, vcpu: 6, ram: 112 },
-    'Standard_ND12s': { gpuModel: 'Tesla P40', gpuCount: 2, vcpu: 12, ram: 224 },
-    'Standard_ND24s': { gpuModel: 'Tesla P40', gpuCount: 4, vcpu: 24, ram: 448 }
-  },
-  'NV': { // NVIDIA Tesla M60
-    'Standard_NV6': { gpuModel: 'Tesla M60', gpuCount: 1, vcpu: 6, ram: 56 },
-    'Standard_NV12': { gpuModel: 'Tesla M60', gpuCount: 2, vcpu: 12, ram: 112 },
-    'Standard_NV24': { gpuModel: 'Tesla M60', gpuCount: 4, vcpu: 24, ram: 224 }
-  },
-  'NCv3': { // NVIDIA Tesla V100
-    'Standard_NC6s_v3': { gpuModel: 'Tesla V100', gpuCount: 1, vcpu: 6, ram: 112 },
-    'Standard_NC12s_v3': { gpuModel: 'Tesla V100', gpuCount: 2, vcpu: 12, ram: 224 },
-    'Standard_NC24s_v3': { gpuModel: 'Tesla V100', gpuCount: 4, vcpu: 24, ram: 448 }
-  },
-  'NDv2': { // NVIDIA Tesla V100
-    'Standard_ND40s_v2': { gpuModel: 'Tesla V100', gpuCount: 8, vcpu: 40, ram: 672 }
-  },
-  'NCasT4_v3': { // NVIDIA Tesla T4
+
+  // NCasT4_v3 Series - NVIDIA Tesla T4
+  'NCasT4_v3': {
     'Standard_NC4as_T4_v3': { gpuModel: 'Tesla T4', gpuCount: 1, vcpu: 4, ram: 28 },
     'Standard_NC8as_T4_v3': { gpuModel: 'Tesla T4', gpuCount: 1, vcpu: 8, ram: 56 },
     'Standard_NC16as_T4_v3': { gpuModel: 'Tesla T4', gpuCount: 1, vcpu: 16, ram: 110 },
     'Standard_NC64as_T4_v3': { gpuModel: 'Tesla T4', gpuCount: 4, vcpu: 64, ram: 440 }
   },
-  'NCads_A100_v4': { // NVIDIA A100
+
+  // NCads_A100_v4 Series - NVIDIA A100
+  'NCads_A100_v4': {
     'Standard_NC24ads_A100_v4': { gpuModel: 'A100', gpuCount: 1, vcpu: 24, ram: 220 },
     'Standard_NC48ads_A100_v4': { gpuModel: 'A100', gpuCount: 2, vcpu: 48, ram: 440 },
     'Standard_NC96ads_A100_v4': { gpuModel: 'A100', gpuCount: 4, vcpu: 96, ram: 880 }
+  },
+
+  // ND Series - NVIDIA Tesla P40
+  'NDv1': {
+    'Standard_ND6s': { gpuModel: 'Tesla P40', gpuCount: 1, vcpu: 6, ram: 112 },
+    'Standard_ND12s': { gpuModel: 'Tesla P40', gpuCount: 2, vcpu: 12, ram: 224 },
+    'Standard_ND24s': { gpuModel: 'Tesla P40', gpuCount: 4, vcpu: 24, ram: 448 },
+    'Standard_ND24rs': { gpuModel: 'Tesla P40', gpuCount: 4, vcpu: 24, ram: 448 }
+  },
+
+  // NDv2 Series - NVIDIA Tesla V100
+  'NDv2': {
+    'Standard_ND40s_v2': { gpuModel: 'Tesla V100', gpuCount: 8, vcpu: 40, ram: 672 },
+    'Standard_ND40rs_v2': { gpuModel: 'Tesla V100', gpuCount: 8, vcpu: 40, ram: 672 }
+  },
+
+  // NDm_A100_v4 Series - NVIDIA A100
+  'NDm_A100_v4': {
+    'Standard_ND96amsr_A100_v4': { gpuModel: 'A100', gpuCount: 8, vcpu: 96, ram: 1900 },
+    'Standard_ND96asr_v4': { gpuModel: 'A100', gpuCount: 8, vcpu: 96, ram: 900 }
+  },
+
+  // ND_H100_v5 Series - NVIDIA H100 (최신)
+  'ND_H100_v5': {
+    'Standard_ND96isr_H100_v5': { gpuModel: 'H100', gpuCount: 8, vcpu: 96, ram: 1900 },
+    'Standard_ND48isr_H100_v5': { gpuModel: 'H100', gpuCount: 4, vcpu: 48, ram: 950 }
+  },
+
+  // NV Series - NVIDIA Tesla M60 (VDI 워크로드)
+  'NVv1': {
+    'Standard_NV6': { gpuModel: 'Tesla M60', gpuCount: 1, vcpu: 6, ram: 56 },
+    'Standard_NV12': { gpuModel: 'Tesla M60', gpuCount: 2, vcpu: 12, ram: 112 },
+    'Standard_NV24': { gpuModel: 'Tesla M60', gpuCount: 4, vcpu: 24, ram: 224 }
+  },
+
+  // NVv3 Series - NVIDIA Tesla M60
+  'NVv3': {
+    'Standard_NV12s_v3': { gpuModel: 'Tesla M60', gpuCount: 1, vcpu: 12, ram: 112 },
+    'Standard_NV24s_v3': { gpuModel: 'Tesla M60', gpuCount: 2, vcpu: 24, ram: 224 },
+    'Standard_NV48s_v3': { gpuModel: 'Tesla M60', gpuCount: 4, vcpu: 48, ram: 448 }
+  },
+
+  // NVv4 Series - AMD Radeon Instinct MI25
+  'NVv4': {
+    'Standard_NV4as_v4': { gpuModel: 'Radeon MI25', gpuCount: 1, vcpu: 4, ram: 14 },
+    'Standard_NV8as_v4': { gpuModel: 'Radeon MI25', gpuCount: 2, vcpu: 8, ram: 28 },
+    'Standard_NV16as_v4': { gpuModel: 'Radeon MI25', gpuCount: 4, vcpu: 16, ram: 56 },
+    'Standard_NV32as_v4': { gpuModel: 'Radeon MI25', gpuCount: 8, vcpu: 32, ram: 112 }
+  },
+
+  // NVads_A10_v5 Series - NVIDIA A10
+  'NVads_A10_v5': {
+    'Standard_NV6ads_A10_v5': { gpuModel: 'A10', gpuCount: 1, vcpu: 6, ram: 55 },
+    'Standard_NV12ads_A10_v5': { gpuModel: 'A10', gpuCount: 2, vcpu: 12, ram: 110 },
+    'Standard_NV18ads_A10_v5': { gpuModel: 'A10', gpuCount: 3, vcpu: 18, ram: 220 },
+    'Standard_NV36ads_A10_v5': { gpuModel: 'A10', gpuCount: 6, vcpu: 36, ram: 440 },
+    'Standard_NV36adms_A10_v5': { gpuModel: 'A10', gpuCount: 6, vcpu: 36, ram: 880 },
+    'Standard_NV72ads_A10_v5': { gpuModel: 'A10', gpuCount: 12, vcpu: 72, ram: 880 }
   }
 }
 
@@ -127,7 +182,7 @@ export class AzurePricingService {
       const gpuModels = new Set<string>()
       const processedRegions = new Set<string>()
 
-      // GPU VM 관련 필터 생성
+      // GPU VM 관련 필터 생성 (단순화된 필터)
       const filters = [
         `serviceName eq '${this.GPU_SERVICE_NAME}'`,
         `priceType eq 'Consumption'`,
@@ -290,7 +345,7 @@ export class AzurePricingService {
 
 
   /**
-   * VM 크기에서 GPU 정보 조회
+   * VM 크기에서 GPU 정보 조회 (개선된 매핑)
    */
   private getGPUInfo(vmSize: string) {
     // 모든 GPU 패밀리에서 검색
@@ -300,6 +355,12 @@ export class AzurePricingService {
       }
     }
 
+    // VM 이름 패턴 분석으로 GPU 정보 추론
+    const inferredInfo = this.inferGPUFromVMName(vmSize)
+    if (inferredInfo.gpuModel !== 'Unknown') {
+      return inferredInfo
+    }
+
     // 기본값 반환
     return {
       gpuModel: 'Unknown',
@@ -307,6 +368,183 @@ export class AzurePricingService {
       vcpu: 4,
       ram: 28
     }
+  }
+
+  /**
+   * VM 이름에서 GPU 정보 추론
+   */
+  private inferGPUFromVMName(vmSize: string): any {
+    const lowerVmSize = vmSize.toLowerCase()
+
+    // H100 시리즈 감지
+    if (lowerVmSize.includes('h100')) {
+      return {
+        gpuModel: 'H100',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // A100 시리즈 감지
+    if (lowerVmSize.includes('a100')) {
+      return {
+        gpuModel: 'A100',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // A10 시리즈 감지
+    if (lowerVmSize.includes('a10')) {
+      return {
+        gpuModel: 'A10',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // V100 시리즈 감지
+    if (lowerVmSize.includes('v100') || lowerVmSize.includes('_v3') || lowerVmSize.includes('nd40')) {
+      return {
+        gpuModel: 'Tesla V100',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // T4 시리즈 감지
+    if (lowerVmSize.includes('t4') || lowerVmSize.includes('nc4as') || lowerVmSize.includes('nc8as') || lowerVmSize.includes('nc16as') || lowerVmSize.includes('nc64as')) {
+      return {
+        gpuModel: 'Tesla T4',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // P100 시리즈 감지
+    if (lowerVmSize.includes('p100') || lowerVmSize.includes('_v2')) {
+      return {
+        gpuModel: 'Tesla P100',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // K80 시리즈 감지
+    if (lowerVmSize.includes('k80') || (lowerVmSize.includes('nc') && !lowerVmSize.includes('_v'))) {
+      return {
+        gpuModel: 'Tesla K80',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // P40 시리즈 감지
+    if (lowerVmSize.includes('p40') || lowerVmSize.includes('nd6s') || lowerVmSize.includes('nd12s') || lowerVmSize.includes('nd24s')) {
+      return {
+        gpuModel: 'Tesla P40',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // M60 시리즈 감지 (VDI)
+    if (lowerVmSize.includes('m60') || lowerVmSize.includes('nv') && !lowerVmSize.includes('nv4as')) {
+      return {
+        gpuModel: 'Tesla M60',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    // AMD GPU 감지
+    if (lowerVmSize.includes('nv4as') || lowerVmSize.includes('nv8as') || lowerVmSize.includes('nv16as') || lowerVmSize.includes('nv32as')) {
+      return {
+        gpuModel: 'Radeon MI25',
+        gpuCount: this.inferGPUCount(vmSize),
+        vcpu: this.inferVCPU(vmSize),
+        ram: this.inferRAM(vmSize)
+      }
+    }
+
+    return {
+      gpuModel: 'Unknown',
+      gpuCount: 1,
+      vcpu: 4,
+      ram: 28
+    }
+  }
+
+  /**
+   * VM 크기에서 GPU 개수 추론
+   */
+  private inferGPUCount(vmSize: string): number {
+    if (vmSize.includes('96')) return 8
+    if (vmSize.includes('72')) return 12
+    if (vmSize.includes('64')) return 4
+    if (vmSize.includes('48')) return 4
+    if (vmSize.includes('40')) return 8
+    if (vmSize.includes('36')) return 6
+    if (vmSize.includes('32')) return 8
+    if (vmSize.includes('24')) return 4
+    if (vmSize.includes('18')) return 3
+    if (vmSize.includes('16')) return 4
+    if (vmSize.includes('12')) return 2
+    if (vmSize.includes('8')) return 2
+    if (vmSize.includes('6')) return 1
+    if (vmSize.includes('4')) return 1
+    return 1
+  }
+
+  /**
+   * VM 크기에서 vCPU 개수 추론
+   */
+  private inferVCPU(vmSize: string): number {
+    if (vmSize.includes('96')) return 96
+    if (vmSize.includes('72')) return 72
+    if (vmSize.includes('64')) return 64
+    if (vmSize.includes('48')) return 48
+    if (vmSize.includes('40')) return 40
+    if (vmSize.includes('36')) return 36
+    if (vmSize.includes('32')) return 32
+    if (vmSize.includes('24')) return 24
+    if (vmSize.includes('18')) return 18
+    if (vmSize.includes('16')) return 16
+    if (vmSize.includes('12')) return 12
+    if (vmSize.includes('8')) return 8
+    if (vmSize.includes('6')) return 6
+    if (vmSize.includes('4')) return 4
+    return 4
+  }
+
+  /**
+   * VM 크기에서 RAM 크기 추론 (GB)
+   */
+  private inferRAM(vmSize: string): number {
+    if (vmSize.includes('96')) return vmSize.includes('1900') ? 1900 : 880
+    if (vmSize.includes('72')) return 880
+    if (vmSize.includes('64')) return 440
+    if (vmSize.includes('48')) return vmSize.includes('950') ? 950 : 440
+    if (vmSize.includes('40')) return 672
+    if (vmSize.includes('36')) return vmSize.includes('adms') ? 880 : 440
+    if (vmSize.includes('32')) return 112
+    if (vmSize.includes('24')) return vmSize.includes('ads') ? 220 : 224
+    if (vmSize.includes('18')) return 220
+    if (vmSize.includes('16')) return 110
+    if (vmSize.includes('12')) return 112
+    if (vmSize.includes('8')) return vmSize.includes('as_v4') ? 28 : 56
+    if (vmSize.includes('6')) return 56
+    if (vmSize.includes('4')) return vmSize.includes('as_v4') ? 14 : 28
+    return 28
   }
 
   /**
