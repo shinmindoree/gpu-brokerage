@@ -18,8 +18,10 @@ import {
   Clock,
   TrendingUp,
   Download,
-  Zap
+  Zap,
+  Home
 } from "lucide-react"
+import Link from "next/link"
 
 interface PriceUpdateData {
   instanceId: string
@@ -329,11 +331,19 @@ export default function AdminPage() {
     <div className="container mx-auto p-6">
       <div className="space-y-6">
         {/* 헤더 */}
-        <div className="flex flex-col space-y-2">
-          <h1 className="text-3xl font-bold">관리자 패널</h1>
-          <p className="text-muted-foreground">
-            GPU 인스턴스 가격 관리 및 시스템 모니터링
-          </p>
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col space-y-2">
+            <h1 className="text-3xl font-bold">관리자 패널</h1>
+            <p className="text-muted-foreground">
+              GPU 인스턴스 가격 관리 및 시스템 모니터링
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/">
+              <Home className="w-4 h-4 mr-2" />
+              홈으로
+            </Link>
+          </Button>
         </div>
 
         {/* 알림 메시지 */}

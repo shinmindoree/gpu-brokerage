@@ -197,3 +197,61 @@ model SpecChangeLog {
 
   @@map("spec_change_log")
 }
+
+// Azure 용량 모니터링 테이블
+model AzureCapacityProbe {
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  region        String   // koreacentral, eastus, etc.
+  vmSize        String   @map("vm_size") // Standard_NC24ads_A100_v4
+  success       Boolean?  // true=성공, false=실패, null=무시된에러
+  errorCode     String?  @map("error_code") // AllocationFailed, SkuNotAvailable
+  errorClass    String?  @map("error_class") // capacity, quota, permission, ignored
+  provisionMs   Int?     @map("provision_ms") // 프로비저닝 시간 (밀리초)
+  testInstanceId String? @map("test_instance_id") // 테스트로 생성된 VM ID
+  cleanedUp     Boolean  @default(false) @map("cleaned_up") // 정리 완료 여부
+  cost          Float?   // 테스트 비용 (USD)
+  metadata      Json?    // 추가 정보 저장
+
+  @@index([region, vmSize, timestamp])
+  @@map("azure_capacity_probes")
+}
+
+// Azure Spot 가격 신호 테이블
+model AzureSpotSignal {
+  id              String   @id @default(cuid())
+  timestamp       DateTime @default(now())
+  region          String
+  vmSize          String   @map("vm_size")
+  spotPrice       Float    @map("spot_price") // 현재 Spot 가격
+  onDemandPrice   Float    @map("on_demand_price") // 온디맨드 가격
+  priceRatio      Float    @map("price_ratio") // spot/ondemand 비율
+  volatility      Float?   // 가격 변동성 지표
+  evictionRate    Float?   @map("eviction_rate") // 중단율
+  marketStress    Float    @map("market_stress") // 시장 혼잡도 (0-1)
+
+  @@index([region, vmSize, timestamp])
+  @@map("azure_spot_signals")
+}
+
+// Azure 용량 스코어 테이블 (집계 결과)
+model AzureCapacityScore {
+  id              String   @id @default(cuid())
+  region          String
+  vmSize          String   @map("vm_size")
+  score           Float    // 0-100 용량 점수
+  label           String   // AVAILABLE, LIMITED, UNAVAILABLE
+  confidence      Float    // 신뢰도 0-1
+  successRate     Float    @map("success_rate") // 최근 성공률
+  avgProvisionMs  Int?     @map("avg_provision_ms") // 평균 프로비저닝 시간
+  capacityErrorRate Float  @map("capacity_error_rate") // 용량 에러 비율
+  spotStress      Float    @map("spot_stress") // Spot 시장 스트레스
+  sampleCount     Int      @map("sample_count") // 표본 수
+  calculatedAt    DateTime @default(now()) @map("calculated_at")
+  windowStart     DateTime @map("window_start") // 집계 시작 시간
+  windowEnd       DateTime @map("window_end") // 집계 종료 시간
+
+  @@unique([region, vmSize])
+  @@index([region, vmSize, calculatedAt])
+  @@map("azure_capacity_scores")
+}

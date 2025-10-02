@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Home } from 'lucide-react'
+import Link from 'next/link'
 
 export default async function TestPage() {
   // 데이터베이스에서 기본 통계 조회
@@ -60,11 +63,19 @@ export default async function TestPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex flex-col space-y-4">
-        <h1 className="text-3xl font-bold">GPU 브로커리지 시스템 테스트</h1>
-        <p className="text-muted-foreground">
-          데이터베이스 연결 및 시드 데이터를 확인합니다.
-        </p>
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col space-y-2">
+          <h1 className="text-3xl font-bold">GPU 브로커리지 시스템 테스트</h1>
+          <p className="text-muted-foreground">
+            데이터베이스 연결 및 시드 데이터를 확인합니다.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/">
+            <Home className="w-4 h-4 mr-2" />
+            홈으로
+          </Link>
+        </Button>
       </div>
 
       {/* 통계 카드들 */}

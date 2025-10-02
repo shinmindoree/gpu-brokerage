@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SimpleSelect, SimpleSelectItem } from "@/components/ui/simple-select"
 import { Input } from "@/components/ui/input"
-import { Search, Filter, ArrowUpDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
+import { Search, Filter, ArrowUpDown, ExternalLink, Loader2, RefreshCw, CheckCircle, AlertTriangle, XCircle, Home, Lightbulb } from "lucide-react"
+import Link from "next/link"
 
 interface InstanceSpecs {
   family: string
@@ -35,6 +36,15 @@ interface InstanceData {
   pricePerGpu: number
   currency: string
   lastUpdated: string
+}
+
+interface CapacityScoreData {
+  region: string
+  vmSize: string
+  score: number
+  label: 'AVAILABLE' | 'LIMITED' | 'UNAVAILABLE'
+  confidence: number
+  calculatedAt: string
 }
 
 interface ApiResponse {
@@ -105,6 +115,22 @@ async function fetchExchangeRate(): Promise<ExchangeRateData> {
   return response.json()
 }
 
+async function fetchCapacityScores(): Promise<CapacityScoreData[]> {
+  try {
+    const response = await fetch('/api/azure/capacity-scores?limit=50')
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch capacity scores')
+    }
+    
+    const data = await response.json()
+    return data.success ? data.data.scores : []
+  } catch (error) {
+    console.error('Failed to fetch capacity scores:', error)
+    return []
+  }
+}
+
 type SortField = 'pricePerHour' | 'pricePerGpu' | 'gpuCount' | 'vcpu' | 'ramGB'
 type SortDirection = 'asc' | 'desc'
 type Currency = 'USD' | 'KRW'
@@ -118,6 +144,7 @@ export default function InstancesPage() {
   const [selectedProvider, setSelectedProvider] = useState<string>('all')
   const [selectedRegion, setSelectedRegion] = useState<string>('all')
   const [selectedGpuModel, setSelectedGpuModel] = useState<string>('all')
+  const [selectedAvailability, setSelectedAvailability] = useState<string>('all')
   const [sortField, setSortField] = useState<SortField>('pricePerGpu')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [selectedInstances, setSelectedInstances] = useState<string[]>([])
@@ -127,12 +154,16 @@ export default function InstancesPage() {
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('USD')
   const [exchangeRate, setExchangeRate] = useState<ExchangeRateData | null>(null)
   const [rateLoading, setRateLoading] = useState(false)
+  
+  // 용량 스코어 관련 상태
+  const [capacityScores, setCapacityScores] = useState<CapacityScoreData[]>([])
+  const [scoresLoading, setScoresLoading] = useState(false)
 
   // API 데이터에서 필터 옵션 추출
   const providers = apiData?.filters.providers || []
   const regions = apiData?.filters.regions || []
   const gpuModels = apiData?.filters.gpuModels || []
-  const instances = apiData?.instances || []
+  const allInstances = apiData?.instances || []
   const pagination = apiData?.pagination
 
   // 환율 로드
@@ -159,6 +190,23 @@ export default function InstancesPage() {
     }
 
     loadExchangeRate()
+  }, [])
+
+  // 용량 스코어 로드
+  useEffect(() => {
+    const loadCapacityScores = async () => {
+      try {
+        setScoresLoading(true)
+        const scores = await fetchCapacityScores()
+        setCapacityScores(scores)
+      } catch (error) {
+        console.error('Failed to load capacity scores:', error)
+      } finally {
+        setScoresLoading(false)
+      }
+    }
+
+    loadCapacityScores()
   }, [])
 
   // API 데이터 로드
@@ -284,15 +332,125 @@ export default function InstancesPage() {
     }
   }
 
+  // Azure 인스턴스의 용량 스코어 찾기
+  const getCapacityScore = (instance: InstanceData): CapacityScoreData | null => {
+    if (instance.provider !== 'AZURE') return null
+    
+    // 리전명은 이미 Azure 형식으로 오므로 그대로 사용
+    const azureRegion = instance.region.toLowerCase()
+    
+    // VM 크기는 이미 Standard_ 형식으로 오므로 그대로 사용
+    const vmSize = instance.instanceName
+    
+    
+    return capacityScores.find(score => 
+      score.region === azureRegion && score.vmSize === vmSize
+    ) || null
+  }
+
+  // Availability 필터링된 인스턴스
+  const instances = allInstances.filter(instance => {
+    if (selectedAvailability === 'all') return true
+    
+    const score = getCapacityScore(instance)
+    
+    // Azure가 아닌 경우
+    if (instance.provider !== 'AZURE') {
+      return selectedAvailability === 'na' // N/A 필터
+    }
+    
+    // 스코어가 없는 경우
+    if (!score) {
+      return selectedAvailability === 'unknown' // 미확인 필터
+    }
+    
+    // 스코어 기반 필터링
+    switch (selectedAvailability) {
+      case 'available':
+        return score.label === 'AVAILABLE'
+      case 'limited':
+        return score.label === 'LIMITED'
+      case 'unavailable':
+        return score.label === 'UNAVAILABLE'
+      default:
+        return true
+    }
+  })
+
+  // Availability 뱃지 렌더링
+  const renderAvailabilityBadge = (instance: InstanceData) => {
+    const score = getCapacityScore(instance)
+    
+    // Azure가 아닌 경우 기본 표시
+    if (instance.provider !== 'AZURE') {
+      return (
+        <Badge variant="outline" className="text-xs">
+          <div className="w-2 h-2 bg-gray-400 rounded-full mr-1"></div>
+          N/A
+        </Badge>
+      )
+    }
+    
+    // 스코어가 없는 경우
+    if (!score) {
+      return (
+        <Badge variant="outline" className="text-xs">
+          <div className="w-2 h-2 bg-gray-400 rounded-full mr-1"></div>
+          미확인
+        </Badge>
+      )
+    }
+    
+    // 스코어 기반 분류
+    switch (score.label) {
+      case 'AVAILABLE':
+        return (
+          <Badge className="bg-green-100 text-green-800 text-xs">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            Available ({score.score}점)
+          </Badge>
+        )
+      case 'LIMITED':
+        return (
+          <Badge variant="secondary" className="text-xs">
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Limited ({score.score}점)
+          </Badge>
+        )
+      case 'UNAVAILABLE':
+        return (
+          <Badge variant="destructive" className="text-xs">
+            <XCircle className="w-3 h-3 mr-1" />
+            Unavailable ({score.score}점)
+          </Badge>
+        )
+      default:
+        return (
+          <Badge variant="outline" className="text-xs">
+            <div className="w-2 h-2 bg-gray-400 rounded-full mr-1"></div>
+            알 수 없음
+          </Badge>
+        )
+    }
+  }
+
   return (
     <div className="container mx-auto p-6">
       <div className="space-y-6">
         {/* 헤더 */}
-        <div className="flex flex-col space-y-2">
-          <h1 className="text-3xl font-bold">GPU 인스턴스 비교</h1>
-          <p className="text-muted-foreground">
-            주요 클라우드 프로바이더의 GPU 인스턴스 가격을 실시간으로 비교하세요
-          </p>
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col space-y-2">
+            <h1 className="text-3xl font-bold">GPU 인스턴스 비교</h1>
+            <p className="text-muted-foreground">
+              주요 클라우드 프로바이더의 GPU 인스턴스 가격을 실시간으로 비교하세요
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/">
+              <Home className="w-4 h-4 mr-2" />
+              홈으로
+            </Link>
+          </Button>
         </div>
 
         {/* 필터 및 검색 */}
@@ -304,7 +462,7 @@ export default function InstancesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">검색</label>
                 <div className="relative">
@@ -357,6 +515,22 @@ export default function InstancesPage() {
                   {gpuModels.map(model => (
                     <SimpleSelectItem key={model} value={model}>{model}</SimpleSelectItem>
                   ))}
+                </SimpleSelect>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Availability</label>
+                <SimpleSelect 
+                  value={selectedAvailability} 
+                  onValueChange={(value) => { setSelectedAvailability(value); setCurrentPage(1); }}
+                  placeholder="가용성 선택"
+                >
+                  <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                  <SimpleSelectItem value="available">🟢 Available</SimpleSelectItem>
+                  <SimpleSelectItem value="limited">🟡 Limited</SimpleSelectItem>
+                  <SimpleSelectItem value="unavailable">🔴 Unavailable</SimpleSelectItem>
+                  <SimpleSelectItem value="na">⚪ N/A (Non-Azure)</SimpleSelectItem>
+                  <SimpleSelectItem value="unknown">❓ 미확인</SimpleSelectItem>
                 </SimpleSelect>
               </div>
 
@@ -456,6 +630,11 @@ export default function InstancesPage() {
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">
                   총 {pagination?.total || 0}개 인스턴스 중 {instances.length}개 표시 중
+                  {selectedAvailability !== 'all' && (
+                    <span className="ml-2 text-blue-600">
+                      (Availability 필터 적용됨)
+                    </span>
+                  )}
                 </p>
                 {pagination && pagination.totalPages > 1 && (
                   <p className="text-xs text-muted-foreground">
@@ -520,7 +699,15 @@ export default function InstancesPage() {
                         <ArrowUpDown className="h-4 w-4" />
                       </div>
                     </TableHead>
+                    <TableHead className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Availability
+                        {scoresLoading && <RefreshCw className="h-3 w-3 animate-spin ml-1" />}
+                      </div>
+                    </TableHead>
                     <TableHead className="text-center">특성</TableHead>
+                    <TableHead className="text-center">추천</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -566,6 +753,9 @@ export default function InstancesPage() {
                       <TableCell className="text-right font-mono font-bold">
                         {formatPrice(instance.pricePerGpu)}/GPU·h
                       </TableCell>
+                      <TableCell className="text-center">
+                        {renderAvailabilityBadge(instance)}
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           <Badge variant="secondary" className="text-xs">
@@ -582,6 +772,24 @@ export default function InstancesPage() {
                             </Badge>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {instance.provider === 'AZURE' ? (
+                          <Button 
+                            asChild
+                            variant="ghost" 
+                            size="sm"
+                            title="대체 리전/VM 추천받기"
+                          >
+                            <Link 
+                              href={`/recommendations/azure?region=${encodeURIComponent(instance.region)}&vmSize=${encodeURIComponent(instance.instanceName)}`}
+                            >
+                              <Lightbulb className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">N/A</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button 
@@ -654,6 +862,21 @@ export default function InstancesPage() {
             <div className="text-xs text-muted-foreground space-y-1">
               <p>※ 가격은 온디맨드 기준이며, 예고 없이 변경될 수 있습니다.</p>
               <p>※ 실제 사용 전 각 프로바이더의 공식 가격을 확인해주세요.</p>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3 text-green-600" />
+                  <span>🟢 Available (75점 이상): 즉시 사용 가능</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                  <span>🟡 Limited (40-74점): 제한적 사용 가능</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <XCircle className="h-3 w-3 text-red-600" />
+                  <span>🔴 Unavailable (39점 이하): 사용 어려움</span>
+                </div>
+              </div>
+              <p>※ Availability는 Azure 실시간 용량 모니터링 기반 (용량 체크 + Spot 신호 종합 스코어)</p>
               {apiData?.meta && (
                 <p>※ 마지막 업데이트: {new Date(apiData.meta.lastUpdated).toLocaleString('ko-KR')}</p>
               )}

@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Loader2, TrendingUp, TrendingDown, Minus, ExternalLink, RefreshCw } from "lucide-react"
+import { ArrowLeft, Loader2, TrendingUp, TrendingDown, Minus, ExternalLink, RefreshCw, Home } from "lucide-react"
+import Link from "next/link"
 
 interface InstanceSpecs {
   family: string
@@ -315,7 +316,7 @@ export default function InstanceComparePage() {
             </div>
           </div>
           
-          {/* 통화 선택 */}
+          {/* 통화 선택 및 홈 버튼 */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium">통화:</label>
@@ -329,6 +330,12 @@ export default function InstanceComparePage() {
                 </SelectContent>
               </Select>
             </div>
+            <Button asChild variant="outline">
+              <Link href="/">
+                <Home className="w-4 h-4 mr-2" />
+                홈으로
+              </Link>
+            </Button>
           </div>
         </div>
 
