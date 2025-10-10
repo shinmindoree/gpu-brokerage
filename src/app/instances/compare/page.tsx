@@ -118,7 +118,6 @@ async function fetchExchangeRate(): Promise<ExchangeRateData> {
 }
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 function CompareContent() {
   const searchParams = useSearchParams()
