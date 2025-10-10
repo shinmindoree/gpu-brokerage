@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -75,7 +75,10 @@ interface RecommendationResult {
   };
 }
 
-export default function AzureRecommendationsPage() {
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+function PageContent() {
   const searchParams = useSearchParams();
   const [originalRegion, setOriginalRegion] = useState('koreacentral');
   const [originalVMSize, setOriginalVMSize] = useState('Standard_NC24ads_A100_v4');
@@ -558,4 +561,12 @@ export default function AzureRecommendationsPage() {
       )}
     </div>
   );
+}
+
+export default function AzureRecommendationsPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-6"><div className="flex items-center justify-center min-h-[400px]"><RefreshCw className="h-5 w-5 animate-spin mr-2" />로딩 중...</div></div>}>
+      <PageContent />
+    </Suspense>
+  )
 }
