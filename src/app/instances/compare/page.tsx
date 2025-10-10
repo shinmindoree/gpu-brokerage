@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -117,7 +117,10 @@ async function fetchExchangeRate(): Promise<ExchangeRateData> {
   return response.json()
 }
 
-export default function InstanceComparePage() {
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+function CompareContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [comparisonData, setComparisonData] = useState<ComparisonResponse | null>(null)
@@ -644,5 +647,13 @@ export default function InstanceComparePage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function InstanceComparePage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-6"><div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin mr-3" /><span className="text-lg">로딩 중...</span></div></div>}>
+      <CompareContent />
+    </Suspense>
   )
 }
