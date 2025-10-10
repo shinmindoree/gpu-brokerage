@@ -427,3 +427,5 @@ export const azureSpotService = new AzureSpotService({
   collectionIntervalMinutes: 15,
   enableRealSpotApi: false // 현재는 모킹 모드
 });
+
+

@@ -354,3 +354,5 @@ async function logSpotWorkerRun(results: any) {
     console.error('Spot 워커 실행 기록 저장 실패:', error);
   }
 }
+
+

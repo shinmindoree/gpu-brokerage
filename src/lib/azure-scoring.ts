@@ -418,3 +418,5 @@ export class AzureCapacityScoringEngine {
 
 // 기본 인스턴스 내보내기
 export const azureCapacityScoringEngine = new AzureCapacityScoringEngine();
+
+

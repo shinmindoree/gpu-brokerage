@@ -18,6 +18,7 @@ const CACHE_TTL = 5 * 60 * 1000 // 5분 캐시
 const instancesQuerySchema = z.object({
   provider: z.string().optional(),
   region: z.string().optional(),
+  country: z.string().optional(),
   gpuModel: z.string().optional(),
   sortBy: z.enum(['pricePerHour', 'pricePerGpu', 'gpuCount', 'vcpu', 'ramGB']).optional().default('pricePerGpu'),
   sortDirection: z.enum(['asc', 'desc']).optional().default('asc'),
@@ -183,8 +184,47 @@ function hasNVLinkSupport(gpuModel: string): boolean {
   return ['H100', 'A100', 'Tesla V100'].includes(gpuModel)
 }
 
+// 리전 → 국가 매핑 (간단화, 필요 시 확장)
+function mapRegionToCountry(provider: string, region: string): string {
+  const r = (region || '').toLowerCase()
+  // 공통
+  if (r === 'global') return 'Global'
+  // Korea
+  if (r.includes('korea') || r === 'ap-northeast-2' || r === 'asia-northeast3') return '대한민국'
+  // Japan
+  if (r.includes('japan') || r === 'ap-northeast-1' || r === 'ap-northeast-3' || r === 'asia-northeast1') return '일본'
+  // Singapore
+  if (r.includes('singapore') || r === 'ap-southeast-1' || r === 'asia-southeast1') return '싱가포르'
+  // Australia
+  if (r.includes('australia') || r === 'ap-southeast-2') return '호주'
+  // United States
+  if (r.includes('us') || r.includes('eastus') || r.includes('westus') || r.includes('centralus') || r.startsWith('us-')) return '미국'
+  // United Kingdom
+  if (r.includes('uk') || r.includes('uksouth') || r.includes('ukwest') || r === 'eu-west-2') return '영국'
+  // Ireland
+  if (r.includes('ireland') || r === 'eu-west-1') return '아일랜드'
+  // France
+  if (r.includes('france') || r === 'eu-west-3') return '프랑스'
+  // Germany
+  if (r.includes('germany') || r.includes('german') || r.startsWith('europe-west3')) return '독일'
+  // Canada
+  if (r.includes('canada') || r.startsWith('ca-') || r.includes('northcentralus') === false && r.includes('canadacentral')) return '캐나다'
+  // India
+  if (r.includes('india') || r.includes('centralindia') || r.includes('southindia') || r === 'asia-south1') return '인도'
+  // Default
+  return '기타'
+}
+
+function getBaseUrl(request?: NextRequest): string {
+  // 우선순위: 명시적 BASE_URL > 요청 origin > Vercel URL
+  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL
+  if (request) return request.nextUrl.origin
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return 'http://localhost:3000'
+}
+
 // 캐시된 인스턴스 데이터 로드 함수
-async function getCachedInstances(): Promise<InstanceData[]> {
+async function getCachedInstances(baseUrl: string): Promise<InstanceData[]> {
   const cacheKey = 'all_instances'
   const cached = instanceCache.get(cacheKey)
   const now = Date.now()
@@ -202,9 +242,9 @@ async function getCachedInstances(): Promise<InstanceData[]> {
   
   // 세 개의 API를 병렬로 호출하여 성능 개선
   const [awsData, azureData, gcpData] = await Promise.allSettled([
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-aws-prices?dryRun=true`).then(r => r.json()),
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-azure-prices?dryRun=true`).then(r => r.json()),
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/sync-gcp-prices?dryRun=true`).then(r => r.json())
+    fetch(`${baseUrl}/api/admin/sync-aws-prices?dryRun=true`).then(r => r.json()),
+    fetch(`${baseUrl}/api/admin/sync-azure-prices?dryRun=true`).then(r => r.json()),
+    fetch(`${baseUrl}/api/admin/sync-gcp-prices?dryRun=true`).then(r => r.json())
   ])
 
   // AWS 인스턴스 추가
@@ -316,6 +356,58 @@ async function getCachedInstances(): Promise<InstanceData[]> {
     }
   }
 
+  // GPUaaS 인스턴스 추가
+  try {
+    const gpuaasRes = await fetch(`${baseUrl}/api/gpuaas/prices`)
+    if (gpuaasRes.ok) {
+      const gpuaasJson = await gpuaasRes.json()
+      if (gpuaasJson.success && gpuaasJson.data?.providers) {
+        const lastUpdated = gpuaasJson.data.lastUpdated || new Date().toISOString()
+
+        const knownTokens = ['H100','A100','V100','T4','L4','A10G','A10','P100','P40','K80','M60']
+        const extractModelToken = (model: string): string => {
+          const upper = String(model || '').toUpperCase()
+          for (const t of knownTokens) if (upper.includes(t)) return t
+          return upper.split(' ')[0]
+        }
+
+        for (const provider of gpuaasJson.data.providers) {
+          for (const inst of provider.instances || []) {
+            const token = extractModelToken(inst.gpuModel)
+            const specs: InstanceSpecs = {
+              family: provider.slug || 'gpuaas',
+              gpuModel: token || inst.gpuModel || 'Unknown',
+              gpuCount: inst.gpuCount || 1,
+              gpuMemoryGB: getGPUMemorySize(token || inst.gpuModel),
+              vcpu: 0,
+              ramGB: 0,
+              localSsdGB: 0,
+              interconnect: 'N/A',
+              networkPerformance: 'N/A',
+              nvlinkSupport: hasNVLinkSupport(token || inst.gpuModel),
+              migSupport: ['A100','H100'].includes(token)
+            }
+
+            const id = `gpuaas-${(provider.slug || provider.name || 'provider').toLowerCase()}-${(token || 'gpu').toLowerCase()}-${specs.gpuCount}`
+            allInstances.push({
+              id,
+              provider: provider.name || 'GPUaaS',
+              region: 'global',
+              instanceName: `${specs.gpuModel}-${specs.gpuCount}x`,
+              specs,
+              pricePerHour: inst.pricePerHour || 0,
+              pricePerGpu: (inst.pricePerHour || 0) / (specs.gpuCount || 1),
+              currency: inst.currency || 'USD',
+              lastUpdated
+            })
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to append GPUaaS instances:', e)
+  }
+
   // 캐시에 저장
   instanceCache.set(cacheKey, {
     data: allInstances,
@@ -334,6 +426,7 @@ export async function GET(request: NextRequest) {
     const queryParams = {
       provider: searchParams.get('provider') || undefined,
       region: searchParams.get('region') || undefined,
+      country: searchParams.get('country') || undefined,
       gpuModel: searchParams.get('gpuModel') || undefined,
       sortBy: searchParams.get('sortBy') || undefined,
       sortDirection: searchParams.get('sortDirection') || undefined,
@@ -346,7 +439,8 @@ export async function GET(request: NextRequest) {
     const validatedParams = instancesQuerySchema.parse(queryParams)
 
     // 캐시된 인스턴스 데이터 로드
-    const allInstances = await getCachedInstances()
+    const baseUrl = getBaseUrl(request)
+    const allInstances = await getCachedInstances(baseUrl)
 
 
     // 필터링
@@ -357,6 +451,10 @@ export async function GET(request: NextRequest) {
       const matchesRegion = !validatedParams.region || 
         instance.region === validatedParams.region
       
+      const instanceCountry = mapRegionToCountry(instance.provider, instance.region)
+      const matchesCountry = !validatedParams.country || 
+        instanceCountry === validatedParams.country
+      
       const matchesGpuModel = !validatedParams.gpuModel || 
         instance.specs.gpuModel === validatedParams.gpuModel
       
@@ -364,7 +462,7 @@ export async function GET(request: NextRequest) {
         instance.instanceName.toLowerCase().includes(validatedParams.search.toLowerCase()) ||
         instance.specs.gpuModel.toLowerCase().includes(validatedParams.search.toLowerCase())
       
-      return matchesProvider && matchesRegion && matchesGpuModel && matchesSearch
+      return matchesProvider && matchesRegion && matchesCountry && matchesGpuModel && matchesSearch
     })
 
     // 정렬
@@ -414,6 +512,7 @@ export async function GET(request: NextRequest) {
     const uniqueProviders = Array.from(new Set(allInstances.map(i => i.provider)))
     const uniqueRegions = Array.from(new Set(allInstances.map(i => i.region)))
     const uniqueGpuModels = Array.from(new Set(allInstances.map(i => i.specs.gpuModel)))
+    const uniqueCountries = Array.from(new Set(allInstances.map(i => mapRegionToCountry(i.provider, i.region))))
 
     // 응답 데이터
     const response = {
@@ -429,6 +528,7 @@ export async function GET(request: NextRequest) {
       filters: {
         providers: uniqueProviders,
         regions: uniqueRegions,
+        countries: uniqueCountries,
         gpuModels: uniqueGpuModels
       },
       meta: {
@@ -447,7 +547,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { 
           error: 'Invalid query parameters', 
-          details: error.errors 
+          details: error.issues 
         },
         { status: 400 }
       )

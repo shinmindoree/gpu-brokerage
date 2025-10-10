@@ -1,0 +1,52 @@
+{
+  "providers": [
+    {
+      "name": "Lambda",
+      "slug": "lambda",
+      "url": "https://lambdalabs.com",
+      "instances": [
+        { "gpuModel": "H100 80GB", "gpuCount": 1, "pricePerHour": 2.99, "currency": "USD" },
+        { "gpuModel": "A100 80GB", "gpuCount": 1, "pricePerHour": 1.49, "currency": "USD" }
+      ]
+    },
+    {
+      "name": "RunPod",
+      "slug": "runpod",
+      "url": "https://www.runpod.io",
+      "instances": [
+        { "gpuModel": "H100 80GB", "gpuCount": 1, "pricePerHour": 2.50, "currency": "USD" },
+        { "gpuModel": "A100 80GB", "gpuCount": 1, "pricePerHour": 1.20, "currency": "USD" }
+      ]
+    },
+    {
+      "name": "Vast.ai",
+      "slug": "vastai",
+      "url": "https://vast.ai",
+      "instances": [
+        { "gpuModel": "H100 80GB", "gpuCount": 1, "pricePerHour": 2.20, "currency": "USD" },
+        { "gpuModel": "A100 80GB", "gpuCount": 1, "pricePerHour": 1.10, "currency": "USD" }
+      ]
+    },
+    {
+      "name": "Paperspace",
+      "slug": "paperspace",
+      "url": "https://www.paperspace.com",
+      "instances": [
+        { "gpuModel": "A100 80GB", "gpuCount": 1, "pricePerHour": 1.89, "currency": "USD" }
+      ]
+    },
+    {
+      "name": "CoreWeave",
+      "slug": "coreweave",
+      "url": "https://www.coreweave.com",
+      "instances": [
+        { "gpuModel": "H100 80GB", "gpuCount": 1, "pricePerHour": 3.20, "currency": "USD" }
+      ]
+    }
+  ],
+  "lastUpdated": "2025-10-06T00:00:00.000Z",
+  "source": "public-web-estimates"
+}
+
+
+

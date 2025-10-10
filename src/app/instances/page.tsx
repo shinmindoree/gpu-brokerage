@@ -78,6 +78,9 @@ interface ExchangeRateData {
   source: string
 }
 
+// GPUaaS 타입 정의
+// (GPUaaS는 서버에서 병합됨)
+
 async function fetchInstances(params: {
   provider?: string
   region?: string
@@ -159,6 +162,8 @@ export default function InstancesPage() {
   const [capacityScores, setCapacityScores] = useState<CapacityScoreData[]>([])
   const [scoresLoading, setScoresLoading] = useState(false)
 
+  // (GPUaaS 클라이언트 상태 제거)
+
   // API 데이터에서 필터 옵션 추출
   const providers = apiData?.filters.providers || []
   const regions = apiData?.filters.regions || []
@@ -208,6 +213,8 @@ export default function InstancesPage() {
 
     loadCapacityScores()
   }, [])
+
+  // (GPUaaS 클라이언트 로드 제거)
 
   // API 데이터 로드
   useEffect(() => {
@@ -276,6 +283,11 @@ export default function InstancesPage() {
       case 'AWS': return 'bg-orange-100 text-orange-800'
       case 'AZURE': return 'bg-blue-100 text-blue-800'
       case 'GCP': return 'bg-green-100 text-green-800'
+      case 'Lambda': return 'bg-purple-100 text-purple-800'
+      case 'RunPod': return 'bg-red-100 text-red-800'
+      case 'Vast.ai': return 'bg-yellow-100 text-yellow-800'
+      case 'Paperspace': return 'bg-pink-100 text-pink-800'
+      case 'CoreWeave': return 'bg-indigo-100 text-indigo-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
@@ -433,6 +445,8 @@ export default function InstancesPage() {
         )
     }
   }
+
+  // (GPUaaS 전용 조회 제거)
 
   return (
     <div className="container mx-auto p-6">
@@ -699,6 +713,7 @@ export default function InstancesPage() {
                         <ArrowUpDown className="h-4 w-4" />
                       </div>
                     </TableHead>
+                  {/* GPUaaS 전용 열 제거됨 */}
                     <TableHead className="text-center">
                       <div className="flex items-center justify-center gap-1">
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -753,6 +768,7 @@ export default function InstancesPage() {
                       <TableCell className="text-right font-mono font-bold">
                         {formatPrice(instance.pricePerGpu)}/GPU·h
                       </TableCell>
+                      {/* GPUaaS 전용 셀 제거 */}
                       <TableCell className="text-center">
                         {renderAvailabilityBadge(instance)}
                       </TableCell>

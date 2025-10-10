@@ -1,13 +1,258 @@
+"use client"
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, BarChart3, Database, Settings, Zap } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { SimpleSelect, SimpleSelectItem } from "@/components/ui/simple-select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ArrowRight, BarChart3, Database, Settings, Zap, Search, Filter, RefreshCw, ExternalLink, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
+
+interface InstanceSpecs {
+  family: string
+  gpuModel: string
+  gpuCount: number
+  gpuMemoryGB: number
+  vcpu: number
+  ramGB: number
+  localSsdGB: number
+  interconnect: string
+  networkPerformance: string
+  nvlinkSupport: boolean
+  migSupport: boolean
+}
+
+interface InstanceData {
+  id: string
+  provider: string
+  region: string
+  instanceName: string
+  specs: InstanceSpecs
+  pricePerHour: number
+  pricePerGpu: number
+  currency: string
+  lastUpdated: string
+}
+
+interface ApiResponse {
+  instances: InstanceData[]
+  pagination: { page: number; limit: number; total: number; totalPages: number; hasNext: boolean; hasPrev: boolean }
+  filters: { providers: string[]; regions: string[]; gpuModels: string[]; countries: string[] }
+  meta: { currency: string; lastUpdated: string; apiVersion: string }
+}
+
+interface CapacityScoreData {
+  region: string
+  vmSize: string
+  score: number
+  label: 'AVAILABLE' | 'LIMITED' | 'UNAVAILABLE'
+  confidence: number
+  calculatedAt: string
+}
+
+async function fetchInstances(params: Partial<{ provider: string; region: string; country: string; gpuModel: string; sortBy: string; sortDirection: string; page: number; limit: number; search: string }>): Promise<ApiResponse> {
+  const searchParams = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== 'all') searchParams.append(k, String(v)) })
+  const res = await fetch(`/api/instances?${searchParams.toString()}`)
+  if (!res.ok) throw new Error('Failed to fetch instances')
+  return res.json()
+}
+
+async function fetchCapacityScores(): Promise<CapacityScoreData[]> {
+  try {
+    const response = await fetch('/api/azure/capacity-scores?limit=50')
+    if (!response.ok) throw new Error('Failed to fetch capacity scores')
+    const data = await response.json()
+    return data.success ? data.data.scores : []
+  } catch {
+    return []
+  }
+}
 
 export default function Home() {
+  const [keyword, setKeyword] = useState("")
+  const [region, setRegion] = useState("all")
+  const [country, setCountry] = useState("all")
+  const [maxPrice, setMaxPrice] = useState<string>("")
+  const [availability, setAvailability] = useState("all")
+  const [loading, setLoading] = useState(false)
+  const [results, setResults] = useState<InstanceData[]>([])
+  const [regions, setRegions] = useState<string[]>([])
+  const [countries, setCountries] = useState<string[]>([])
+  const [scores, setScores] = useState<CapacityScoreData[]>([])
+
+  useEffect(() => {
+    fetchInstances({ limit: 1 }).then((d) => { setRegions(d.filters.regions); (d as any).filters?.countries && setCountries((d as any).filters.countries) }).catch(() => {})
+    fetchCapacityScores().then(setScores).catch(() => {})
+  }, [])
+
+  const getCapacity = (inst: InstanceData): CapacityScoreData | null => {
+    if (inst.provider !== 'AZURE') return null
+    const r = inst.region.toLowerCase()
+    const v = inst.instanceName
+    return scores.find(s => s.region === r && s.vmSize === v) || null
+  }
+
+  const filteredByAvailability = (list: InstanceData[]) => {
+    if (availability === 'all') return list
+    return list.filter((i) => {
+      const s = getCapacity(i)
+      if (i.provider !== 'AZURE') return availability === 'na'
+      if (!s) return availability === 'unknown'
+      if (availability === 'available') return s.label === 'AVAILABLE'
+      if (availability === 'limited') return s.label === 'LIMITED'
+      if (availability === 'unavailable') return s.label === 'UNAVAILABLE'
+      return true
+    })
+  }
+
+  const search = async () => {
+    try {
+      setLoading(true)
+      const data = await fetchInstances({
+        country: country,
+        search: keyword.trim() || undefined,
+        sortBy: 'pricePerGpu',
+        sortDirection: 'asc',
+        limit: 100
+      })
+      let list = data.instances
+      if (maxPrice) {
+        const threshold = parseFloat(maxPrice)
+        if (!Number.isNaN(threshold)) list = list.filter(i => i.pricePerHour <= threshold)
+      }
+      list = filteredByAvailability(list)
+      setResults(list)
+    } finally {
+      setLoading(false)
+    }
+  }
   return (
-    <div className="container mx-auto p-6 min-h-screen">
+    <div className="mx-auto p-6 min-h-screen max-w-[1600px]">
       <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-8">
+        {/* 메인 검색 패널 */}
+        <Card className="w-full">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Search className="w-5 h-5" />
+              원하는 GPU를 검색하세요
+            </CardTitle>
+            <CardDescription>GPU 카드(H100/A100 등), 국가, 시간당 가격, Availability로 빠르게 찾아보세요</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="flex flex-col md:flex-row items-stretch gap-3 md:gap-4">
+                <div className="flex-1 p-3 md:p-4">
+                  <label className="text-xs text-muted-foreground block mb-1">GPU 키워드</label>
+                  <Input className="h-12" placeholder="예: H100, A100, L4" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+                </div>
+                <div className="flex-1 p-3 md:p-4">
+                  <label className="text-xs text-muted-foreground block mb-1">리전</label>
+                  <SimpleSelect className="h-12" value={region} onValueChange={setRegion}>
+                    <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                    {regions.map((r) => (<SimpleSelectItem key={r} value={r}>{r}</SimpleSelectItem>))}
+                  </SimpleSelect>
+                </div>
+                <div className="flex-1 p-3 md:p-4">
+                  <label className="text-xs text-muted-foreground block mb-1">국가</label>
+                  <SimpleSelect className="h-12" value={country} onValueChange={setCountry}>
+                    <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                    {countries.map((c) => (<SimpleSelectItem key={c} value={c}>{c}</SimpleSelectItem>))}
+                  </SimpleSelect>
+                </div>
+                <div className="flex-1 p-3 md:p-4 max-w-[240px]">
+                  <label className="text-xs text-muted-foreground block mb-1">시간당 최대 가격 (USD)</label>
+                  <Input className="h-12" placeholder="예: 5.0" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+                </div>
+                <div className="flex-1 p-3 md:p-4 max-w-[220px]">
+                  <label className="text-xs text-muted-foreground block mb-1">Availability</label>
+                  <SimpleSelect className="h-12" value={availability} onValueChange={setAvailability}>
+                    <SimpleSelectItem value="all">전체</SimpleSelectItem>
+                    <SimpleSelectItem value="available">🟢 Available</SimpleSelectItem>
+                    <SimpleSelectItem value="limited">🟡 Limited</SimpleSelectItem>
+                    <SimpleSelectItem value="unavailable">🔴 Unavailable</SimpleSelectItem>
+                    <SimpleSelectItem value="na">⚪ N/A (Non-Azure)</SimpleSelectItem>
+                    <SimpleSelectItem value="unknown">❓ 미확인</SimpleSelectItem>
+                  </SimpleSelect>
+                </div>
+                <div className="p-3 md:p-4 flex items-end md:items-center justify-end md:justify-center">
+                  <Button onClick={search} disabled={loading} className="h-12 px-6">
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Filter className="w-4 h-4 mr-2" />}
+                    검색하기
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 검색 결과 */}
+        {results.length > 0 && (
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle>검색 결과 ({results.length}개)</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>프로바이더</TableHead>
+                      <TableHead>리전</TableHead>
+                      <TableHead>인스턴스</TableHead>
+                      <TableHead>GPU</TableHead>
+                      <TableHead className="text-right">$/h</TableHead>
+                      <TableHead className="text-right">$/GPU·h</TableHead>
+                      <TableHead className="text-center">Availability</TableHead>
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {results.map((i) => {
+                      const score = getCapacity(i)
+                      return (
+                        <TableRow key={i.id}>
+                          <TableCell><Badge>{i.provider}</Badge></TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{i.region}</TableCell>
+                          <TableCell className="font-mono text-sm">{i.instanceName}</TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <div className="font-medium">{i.specs.gpuModel}</div>
+                              <div className="text-xs text-muted-foreground">{i.specs.gpuCount}x {i.specs.gpuMemoryGB}GB</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">${i.pricePerHour.toFixed(3)}</TableCell>
+                          <TableCell className="text-right font-mono font-bold">${i.pricePerGpu.toFixed(3)}</TableCell>
+                          <TableCell className="text-center">
+                            {i.provider !== 'AZURE' ? (
+                              <Badge variant="outline" className="text-xs"><div className="w-2 h-2 bg-gray-400 rounded-full mr-1 inline-block"></div>N/A</Badge>
+                            ) : !score ? (
+                              <Badge variant="outline" className="text-xs"><div className="w-2 h-2 bg-gray-400 rounded-full mr-1 inline-block"></div>미확인</Badge>
+                            ) : score.label === 'AVAILABLE' ? (
+                              <Badge className="bg-green-100 text-green-800 text-xs"><CheckCircle className="w-3 h-3 mr-1 inline" />Available ({score.score})</Badge>
+                            ) : score.label === 'LIMITED' ? (
+                              <Badge variant="secondary" className="text-xs"><AlertTriangle className="w-3 h-3 mr-1 inline" />Limited ({score.score})</Badge>
+                            ) : (
+                              <Badge variant="destructive" className="text-xs"><XCircle className="w-3 h-3 mr-1 inline" />Unavailable ({score.score})</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button asChild variant="ghost" size="sm" title="인스턴스 상세로">
+                              <Link href={`/instances?search=${encodeURIComponent(i.instanceName)}`}>
+                                <ExternalLink className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold tracking-tight">
             GPU 브로커리지 플랫폼
